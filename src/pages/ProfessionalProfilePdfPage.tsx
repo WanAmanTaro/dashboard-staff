@@ -62,13 +62,13 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
   }, [initialStaffId]);
 
   useEffect(() => {
-    if (!selectedStaffId) return;
+    if (!selectedStaffId || !userAccount) return;
     setLoading(true);
-    getStaffProfileBundle(selectedStaffId)
+    getStaffProfileBundle(selectedStaffId, userAccount)
       .then((res) => setBundle(res))
       .catch((err) => showToast('error', err?.message || 'Gagal memuatkan data profil.'))
       .finally(() => setLoading(false));
-  }, [selectedStaffId]);
+  }, [selectedStaffId, userAccount?.uid]);
 
   const handleGeneratePdf = async () => {
     if (!bundle?.profile || !userAccount) {

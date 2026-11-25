@@ -27,6 +27,7 @@ import {
   PUBLICATION_TYPES,
   QUALIFICATION_LEVELS,
   computeProfileCompletion,
+  getHighestQualificationFromList,
 } from '../lib/constants';
 import {
   addOrUpdatePublication,
@@ -178,7 +179,7 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({
     setLoading(true);
     try {
       const [bundle, settings] = await Promise.all([
-        getStaffProfileBundle(effectiveStaffId),
+        getStaffProfileBundle(effectiveStaffId, userAccount),
         getSystemSettings().catch(() => null),
       ]);
       setSysSettings(settings);
@@ -343,7 +344,8 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({
           orgPosition: orgPosition.trim(),
           headOfCenter: headOfCenter.trim() || selectedCenter?.headName || '',
           headOfDepartment: headOfDepartment.trim() || selectedDept?.headName || '',
-          highestQualification: profile?.highestQualification || '',
+          highestQualification:
+            getHighestQualificationFromList(qualifications) || profile?.highestQualification || '',
           primaryExpertise: primaryExpertise.trim(),
           secondaryExpertise: secondaryExpertise.trim(),
           digitalCompetencies: competencyItems.map((i) => i.categoryName),

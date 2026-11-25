@@ -78,14 +78,33 @@ service cloud.firestore {
       return isAdmin()
         || (isActiveUser() && (
           data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && data.departmentId == userDoc().departmentId)
         ));
     }
 
     function canReadDirectoryOrScopedRecord(data) {
       return canReadScopedRecord(data)
         || (isL3OrL4() && data.status == 'active');
+    }
+
+    function canReadMissingScopedDocForStaff(staffId) {
+      return isAdmin()
+        || (isActiveUser() && (
+          userDoc().staffId == staffId
+          || (exists(/databases/$(database)/documents/staff_profiles/$(staffId))
+              && canReadScopedRecord(get(/databases/$(database)/documents/staff_profiles/$(staffId)).data))
+        ));
+    }
+
+    function canReadMissingDirectoryDocForStaff(staffId) {
+      return isAdmin()
+        || (isActiveUser() && (
+          userDoc().staffId == staffId
+          || (exists(/databases/$(database)/documents/staff_profiles/$(staffId))
+              && canReadDirectoryOrScopedRecord(get(/databases/$(database)/documents/staff_profiles/$(staffId)).data))
+        ));
     }
 
     // =========================================================
@@ -583,25 +602,31 @@ service cloud.firestore {
 
     // 3. staff_profiles + isolated PII subcollection
     match /staff_profiles/{staffId} {
-      allow get: if isValidId(staffId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow get: if isValidId(staffId) && (
+        (resource == null && (isAdmin() || (isActiveUser() && userDoc().staffId == staffId)))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
         ));
 
-      allow create: if isVerified() && isValidId(staffId) && isValidStaffProfile(incoming()) && hasCreatedTimestamps(incoming()) && (
-        isAdmin()
-        || (
-          isActiveUser()
-          && incoming().uid == request.auth.uid
-          && incoming().staffId == userDoc().staffId
-          && incoming().createdBy == request.auth.uid
-          && incoming().updatedBy == request.auth.uid
-        )
-      );
+      allow create: if isVerified() && isValidId(staffId) && isValidStaffProfile(incoming()) && hasCreatedTimestamps(incoming())
+        && incoming().id == staffId
+        && (
+          isAdmin()
+          || (
+            isActiveUser()
+            && incoming().uid == request.auth.uid
+            && incoming().staffId == userDoc().staffId
+            && incoming().createdBy == request.auth.uid
+            && incoming().updatedBy == request.auth.uid
+          )
+        );
 
       allow update: if isVerified() && isValidId(staffId) && isValidStaffProfile(incoming()) && hasUpdatedTimestamps(incoming())
         && incoming().id == existing().id
@@ -627,12 +652,16 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(staffId);
 
       match /private/{docId} {
-        allow get: if isValidId(staffId) && isValidId(docId) && canReadScopedRecord(resource.data);
+        allow get: if isValidId(staffId) && isValidId(docId) && (
+          (resource == null && canReadMissingScopedDocForStaff(staffId))
+          || (resource != null && canReadScopedRecord(resource.data))
+        );
         allow list: if isAdmin()
           || (isActiveUser() && (
             resource.data.uid == request.auth.uid
-            || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-            || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+            || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+            || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+            || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           ));
         allow create: if isVerified() && isValidId(staffId) && isValidId(docId) && isValidStaffPrivatePII(incoming()) && hasCreatedTimestamps(incoming())
           && incoming().staffId == staffId
@@ -675,12 +704,16 @@ service cloud.firestore {
 
     // 6. qualifications
     match /qualifications/{qualId} {
-      allow get: if isValidId(qualId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow get: if isValidId(qualId) && (
+        (resource == null && isAdmin())
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
         ));
       allow create: if isVerified() && isValidId(qualId) && isValidQualification(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == qualId && (
@@ -695,12 +728,16 @@ service cloud.firestore {
 
     // 7. expertise
     match /expertise/{expId} {
-      allow get: if isValidId(expId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow get: if isValidId(expId) && (
+        (resource == null && canReadMissingDirectoryDocForStaff(expId))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
         ));
       allow create: if isVerified() && isValidId(expId) && isValidExpertise(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == expId && (
@@ -720,12 +757,16 @@ service cloud.firestore {
 
     // 8. competencies
     match /competencies/{compId} {
-      allow get: if isValidId(compId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow get: if isValidId(compId) && (
+        (resource == null && canReadMissingDirectoryDocForStaff(compId))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
         ));
       allow create: if isVerified() && isValidId(compId) && isValidCompetency(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == compId && (
@@ -740,12 +781,16 @@ service cloud.firestore {
 
     // 9. publications
     match /publications/{pubId} {
-      allow get: if isValidId(pubId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow get: if isValidId(pubId) && (
+        (resource == null && isAdmin())
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
         ));
       allow create: if isVerified() && isValidId(pubId) && isValidPublication(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == pubId && (
@@ -760,12 +805,16 @@ service cloud.firestore {
 
     // 10. certificates
     match /certificates/{certId} {
-      allow get: if isValidId(certId) && canReadScopedRecord(resource.data);
+      allow get: if isValidId(certId) && (
+        (resource == null && isAdmin())
+        || (resource != null && canReadScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
         ));
       allow create: if isVerified() && isValidId(certId) && isValidCertificate(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == certId && (
         isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
@@ -779,12 +828,16 @@ service cloud.firestore {
 
     // 11. profile_photos
     match /profile_photos/{photoId} {
-      allow get: if isValidId(photoId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow get: if isValidId(photoId) && (
+        (resource == null && canReadMissingDirectoryDocForStaff(photoId))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
           || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
         ));
       allow create: if isVerified() && isValidId(photoId) && isValidProfilePhoto(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == photoId && (
@@ -817,12 +870,16 @@ service cloud.firestore {
 
     // 14. generated_profiles
     match /generated_profiles/{genId} {
-      allow get: if isValidId(genId) && canReadScopedRecord(resource.data);
+      allow get: if isValidId(genId) && (
+        (resource == null && isAdmin())
+        || (resource != null && canReadScopedRecord(resource.data))
+      );
       allow list: if isAdmin()
         || (isActiveUser() && (
           resource.data.uid == request.auth.uid
-          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
-          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || (userDoc().staffId != '' && resource.data.staffId == userDoc().staffId)
+          || (userDoc().role == 'L1' && userDoc().centerId != '' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && userDoc().departmentId != '' && resource.data.departmentId == userDoc().departmentId)
         ));
       allow create: if isVerified() && isValidId(genId) && isValidGeneratedProfile(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == genId && (
         isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid)

@@ -489,9 +489,9 @@ export function subscribeScopedStaffProfiles(
   let q;
   if (user.isAdmin) {
     q = query(col);
-  } else if (user.role === 'L1') {
+  } else if (user.role === 'L1' && user.centerId) {
     q = query(col, where('centerId', '==', user.centerId));
-  } else if (user.role === 'L2') {
+  } else if (user.role === 'L2' && user.departmentId) {
     q = query(col, where('departmentId', '==', user.departmentId));
   } else if (user.role === 'L3' || user.role === 'L4') {
     q = query(col, where('status', '==', 'active'));
@@ -510,7 +510,31 @@ export function subscribeScopedStaffProfiles(
   );
 }
 
-export async function getStaffProfileBundle(staffId: string): Promise<{
+function buildScopedStaffSubQuery(
+  collectionName: 'qualifications' | 'publications' | 'certificates',
+  staffId: string,
+  viewer?: UserAccount | null
+) {
+  const col = collection(db, collectionName);
+  if (!viewer || viewer.isAdmin || viewer.staffId === staffId) {
+    return query(col, where('staffId', '==', staffId));
+  }
+  if (viewer.role === 'L1' && viewer.centerId) {
+    return query(col, where('centerId', '==', viewer.centerId));
+  }
+  if (viewer.role === 'L2' && viewer.departmentId) {
+    return query(col, where('departmentId', '==', viewer.departmentId));
+  }
+  if ((viewer.role === 'L3' || viewer.role === 'L4') && collectionName !== 'certificates') {
+    return query(col, where('status', '==', 'active'));
+  }
+  return null;
+}
+
+export async function getStaffProfileBundle(
+  staffId: string,
+  viewer?: UserAccount | null
+): Promise<{
   profile: StaffProfile | null;
   pii: StaffPrivatePII | null;
   qualifications: Qualification[];
@@ -524,32 +548,57 @@ export async function getStaffProfileBundle(staffId: string): Promise<{
     const profileSnap = await getDoc(doc(db, 'staff_profiles', staffId));
     const profile = profileSnap.exists() ? (profileSnap.data() as StaffProfile) : null;
 
+    const canAccessPiiAndCerts =
+      !viewer ||
+      viewer.isAdmin ||
+      viewer.staffId === staffId ||
+      (viewer.role === 'L1' && Boolean(viewer.centerId)) ||
+      (viewer.role === 'L2' && Boolean(viewer.departmentId));
+
     let pii: StaffPrivatePII | null = null;
-    try {
-      const piiSnap = await getDoc(doc(db, 'staff_profiles', staffId, 'private', 'pii'));
-      pii = piiSnap.exists() ? (piiSnap.data() as StaffPrivatePII) : null;
-    } catch {
-      pii = null; // Restricted PII if caller lacks scope
+    if (canAccessPiiAndCerts) {
+      try {
+        const piiSnap = await getDoc(doc(db, 'staff_profiles', staffId, 'private', 'pii'));
+        pii = piiSnap.exists() ? (piiSnap.data() as StaffPrivatePII) : null;
+      } catch {
+        pii = null; // Restricted PII if caller lacks scope
+      }
     }
 
+    const qualQuery = buildScopedStaffSubQuery('qualifications', staffId, viewer);
+    const pubQuery = buildScopedStaffSubQuery('publications', staffId, viewer);
+    const certQuery = canAccessPiiAndCerts
+      ? buildScopedStaffSubQuery('certificates', staffId, viewer)
+      : null;
+
     const [qualSnap, expSnap, compSnap, pubSnap, certSnap, photoSnap] = await Promise.all([
-      getDocs(query(collection(db, 'qualifications'), where('staffId', '==', staffId))),
-      getDoc(doc(db, 'expertise', staffId)),
-      getDoc(doc(db, 'competencies', staffId)),
-      getDocs(query(collection(db, 'publications'), where('staffId', '==', staffId))),
-      getDocs(query(collection(db, 'certificates'), where('staffId', '==', staffId))).catch(() => null),
+      qualQuery ? getDocs(qualQuery) : Promise.resolve(null),
+      getDoc(doc(db, 'expertise', staffId)).catch(() => null),
+      getDoc(doc(db, 'competencies', staffId)).catch(() => null),
+      pubQuery ? getDocs(pubQuery) : Promise.resolve(null),
+      certQuery ? getDocs(certQuery).catch(() => null) : Promise.resolve(null),
       getDoc(doc(db, 'profile_photos', staffId)).catch(() => null),
     ]);
 
     return {
       profile,
       pii,
-      qualifications: qualSnap.docs.map((d) => d.data() as Qualification).filter((q) => q.status === 'active'),
-      expertise: expSnap.exists() ? (expSnap.data() as ExpertiseRecord) : null,
-      competencies: compSnap.exists() ? (compSnap.data() as CompetencyRecord) : null,
-      publications: pubSnap.docs.map((d) => d.data() as Publication).filter((p) => p.status === 'active'),
+      qualifications: qualSnap
+        ? qualSnap.docs
+            .map((d) => d.data() as Qualification)
+            .filter((q) => q.staffId === staffId && q.status === 'active')
+        : [],
+      expertise: expSnap && expSnap.exists() ? (expSnap.data() as ExpertiseRecord) : null,
+      competencies: compSnap && compSnap.exists() ? (compSnap.data() as CompetencyRecord) : null,
+      publications: pubSnap
+        ? pubSnap.docs
+            .map((d) => d.data() as Publication)
+            .filter((p) => p.staffId === staffId && p.status === 'active')
+        : [],
       certificates: certSnap
-        ? certSnap.docs.map((d) => d.data() as Certificate).filter((c) => c.status === 'active')
+        ? certSnap.docs
+            .map((d) => d.data() as Certificate)
+            .filter((c) => c.staffId === staffId && c.status === 'active')
         : [],
       photo: photoSnap && photoSnap.exists() ? (photoSnap.data() as ProfilePhoto) : null,
     };
@@ -579,20 +628,45 @@ export async function saveFullStaffProfile(params: {
     certificatesCount: params.certificatesCount,
   });
 
+  const sanitizeStringList = (arr: string[] | undefined, maxItems: number) =>
+    (arr || [])
+      .map((s) => String(s).trim().slice(0, 160))
+      .filter(Boolean)
+      .slice(0, maxItems);
+
   try {
     const profileRef = doc(db, 'staff_profiles', staffId);
     const existingProfile = await getDoc(profileRef);
-    const digitalCompNames = params.competencies.items.map((i) => i.categoryName).slice(0, 30);
+    const digitalCompNames = sanitizeStringList(
+      params.competencies.items.map((i) => i.categoryName),
+      30
+    );
+    const safeKeywords = sanitizeStringList(params.expertise.keywords, 30);
 
     const profilePayload = {
       ...params.profile,
       id: staffId,
-      primaryExpertise: params.expertise.primaryExpertise || params.profile.primaryExpertise,
-      secondaryExpertise: params.expertise.secondaryExpertise || params.profile.secondaryExpertise,
-      expertiseKeywords: (params.expertise.keywords || []).slice(0, 30),
+      fullName: params.profile.fullName.slice(0, 160),
+      officialEmail: params.profile.officialEmail.slice(0, 200),
+      position: params.profile.position.slice(0, 120),
+      grade: params.profile.grade.slice(0, 40),
+      scheme: params.profile.scheme.slice(0, 80),
+      centerId: params.profile.centerId.slice(0, 64),
+      centerName: params.profile.centerName.slice(0, 160),
+      departmentId: params.profile.departmentId.slice(0, 64),
+      departmentName: params.profile.departmentName.slice(0, 160),
+      unit: params.profile.unit.slice(0, 120),
+      orgPosition: params.profile.orgPosition.slice(0, 120),
+      headOfCenter: params.profile.headOfCenter.slice(0, 160),
+      headOfDepartment: params.profile.headOfDepartment.slice(0, 160),
+      highestQualification: params.profile.highestQualification.slice(0, 80),
+      primaryExpertise: (params.expertise.primaryExpertise || params.profile.primaryExpertise).slice(0, 160),
+      secondaryExpertise: (params.expertise.secondaryExpertise || params.profile.secondaryExpertise).slice(0, 160),
+      expertiseKeywords: safeKeywords,
       digitalCompetencies: digitalCompNames,
       completionPercent,
       missingSections: missingSections.slice(0, 12),
+      photoDisplayUrl: params.profile.photoDisplayUrl.slice(0, 500),
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     };
@@ -612,8 +686,15 @@ export async function saveFullStaffProfile(params: {
     const piiPayload = {
       ...params.pii,
       staffId,
-      centerId: params.profile.centerId,
-      departmentId: params.profile.departmentId,
+      centerId: params.profile.centerId.slice(0, 64),
+      departmentId: params.profile.departmentId.slice(0, 64),
+      phone: params.pii.phone.slice(0, 40),
+      gender: params.pii.gender.slice(0, 30),
+      icNumber: params.pii.icNumber.slice(0, 24),
+      altContact: params.pii.altContact.slice(0, 160),
+      appointmentDate: params.pii.appointmentDate.slice(0, 32),
+      serviceStatus: params.pii.serviceStatus.slice(0, 60),
+      yearsOfService: Math.max(0, Math.min(80, Math.round(Number(params.pii.yearsOfService) || 0))),
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     };
@@ -633,8 +714,22 @@ export async function saveFullStaffProfile(params: {
       ...params.expertise,
       id: staffId,
       staffId,
-      centerId: params.profile.centerId,
-      departmentId: params.profile.departmentId,
+      centerId: params.profile.centerId.slice(0, 64),
+      departmentId: params.profile.departmentId.slice(0, 64),
+      primaryExpertise: params.expertise.primaryExpertise.slice(0, 160),
+      secondaryExpertise: params.expertise.secondaryExpertise.slice(0, 160),
+      specializations: sanitizeStringList(params.expertise.specializations, 20),
+      researchAreas: sanitizeStringList(params.expertise.researchAreas, 20),
+      teachingAreas: sanitizeStringList(params.expertise.teachingAreas, 20),
+      trainingAreas: sanitizeStringList(params.expertise.trainingAreas, 20),
+      keywords: safeKeywords,
+      teachingExp: params.expertise.teachingExp.slice(0, 1500),
+      managementExp: params.expertise.managementExp.slice(0, 1500),
+      facilitatorExp: params.expertise.facilitatorExp.slice(0, 1500),
+      speakerExp: params.expertise.speakerExp.slice(0, 1500),
+      coachExp: params.expertise.coachExp.slice(0, 1500),
+      projectExp: params.expertise.projectExp.slice(0, 1500),
+      professionalExp: params.expertise.professionalExp.slice(0, 1500),
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     };
@@ -654,8 +749,9 @@ export async function saveFullStaffProfile(params: {
       ...params.competencies,
       id: staffId,
       staffId,
-      centerId: params.profile.centerId,
-      departmentId: params.profile.departmentId,
+      centerId: params.profile.centerId.slice(0, 64),
+      departmentId: params.profile.departmentId.slice(0, 64),
+      items: (params.competencies.items || []).slice(0, 30),
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     };
@@ -1021,8 +1117,8 @@ export async function getAllQualificationsForScope(user: UserAccount): Promise<Q
   const col = collection(db, 'qualifications');
   let q;
   if (user.isAdmin) q = query(col);
-  else if (user.role === 'L1') q = query(col, where('centerId', '==', user.centerId));
-  else if (user.role === 'L2') q = query(col, where('departmentId', '==', user.departmentId));
+  else if (user.role === 'L1' && user.centerId) q = query(col, where('centerId', '==', user.centerId));
+  else if (user.role === 'L2' && user.departmentId) q = query(col, where('departmentId', '==', user.departmentId));
   else if (user.role === 'L3' || user.role === 'L4') q = query(col, where('status', '==', 'active'));
   else q = query(col, where('uid', '==', user.uid));
 
@@ -1038,8 +1134,8 @@ export async function getAllExpertiseForScope(user: UserAccount): Promise<Expert
   const col = collection(db, 'expertise');
   let q;
   if (user.isAdmin) q = query(col);
-  else if (user.role === 'L1') q = query(col, where('centerId', '==', user.centerId));
-  else if (user.role === 'L2') q = query(col, where('departmentId', '==', user.departmentId));
+  else if (user.role === 'L1' && user.centerId) q = query(col, where('centerId', '==', user.centerId));
+  else if (user.role === 'L2' && user.departmentId) q = query(col, where('departmentId', '==', user.departmentId));
   else if (user.role === 'L3' || user.role === 'L4') q = query(col, where('status', '==', 'active'));
   else q = query(col, where('uid', '==', user.uid));
 

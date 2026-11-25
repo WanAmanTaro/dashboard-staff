@@ -122,3 +122,16 @@ export const DIRTY_DOZEN_CASES = [
     expected: 'PERMISSION_DENIED',
   },
 ];
+
+export const POSITIVE_SELF_BOOTSTRAP_CASES = [
+  {
+    id: 'POS-01',
+    title: 'Active user reads own uninitialized staff_profiles/{staffId} before first save',
+    path: 'staff_profiles/IAB-STF-RUUDBD',
+    operation: 'get',
+    auth: { uid: 'rUuDbdDIA0eGRJR5kEzhPvYHq683', token: { email: 'amantaro2027a@gmail.com', email_verified: true } },
+    userDoc: { status: 'active', role: 'L5', isAdmin: false, staffId: 'IAB-STF-RUUDBD' },
+    docExists: false,
+    expected: 'ALLOW_NULL_RESULT',
+  },
+];

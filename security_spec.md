@@ -11,6 +11,7 @@
 3. **PII Isolation**: Maklumat sensitif (`phone`, `icNumber`, `altContact`, `appointmentDate`) diasingkan ke subkoleksi `/staff_profiles/{staffId}/private/{docId}` dan hanya boleh dibaca oleh pemilik `uid`, L1 (pusat sama), L2 (jabatan sama), atau Admin.
 4. **Immutable Audit Trail**: Koleksi `/audit_logs/{logId}` membenarkan `create` oleh pengguna aktif yang disahkan untuk rekod milik `actorUid == request.auth.uid`, dan `read` oleh Admin sahaja; `update` dan `delete` diharamkan sepenuhnya (`if false`).
 5. **Temporal Integrity & Anti-Update-Gap**: Semua ciptaan menggunakan `createdAt == request.time && updatedAt == request.time`, semua kemas kini menggunakan `updatedAt == request.time && createdAt == existing().createdAt`, dan setiap medan terhad saiz (`<= max`) serta kunci dokumen disekat melalui `hasOnly(...)`.
+6. **Non-Existent Document & Non-Empty Scope Guard**: Operasi `get` ke atas dokumen yang belum wujud (`resource == null`) bagi `staff_profiles`, `private/pii`, `expertise`, `competencies`, dan `profile_photos` hanya dibenarkan untuk Admin, pemilik `staffId` sendiri, atau pembaca dalam skop apabila rekod induk `staff_profiles/{staffId}` wujud; skop `L1`/`L2` turut mewajibkan `centerId != ''` / `departmentId != ''`.
 
 ## 2. The "Dirty Dozen" Payloads (Mesti Ditolak dengan PERMISSION_DENIED)
 1. **Privilege Escalation Self-Signup**: Pengguna biasa mencipta `/users/{uid}` dengan `{ isAdmin: true, status: "active", role: "L1" }`.
