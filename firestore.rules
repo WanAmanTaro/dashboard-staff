@@ -1,0 +1,843 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================
+    // GLOBAL HARDENED PRIMITIVES (Phase 3)
+    // =========================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrapAdmin() {
+      return isVerified() && request.auth.token.email == 'iab-1248@moe-dl.edu.my';
+    }
+
+    function userDocPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(userDocPath(request.auth.uid));
+    }
+
+    function userDoc() {
+      return get(userDocPath(request.auth.uid)).data;
+    }
+
+    function isActiveUser() {
+      return isVerified() && hasUserDoc() && userDoc().status == 'active';
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || (isActiveUser() && userDoc().isAdmin == true);
+    }
+
+    function isL3OrL4() {
+      return isActiveUser() && (userDoc().role == 'L3' || userDoc().role == 'L4');
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidStringList(arr, maxItems) {
+      return arr is list && arr.size() <= maxItems && (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 160));
+    }
+
+    function hasCreatedTimestamps(data) {
+      return data.createdAt == request.time && data.updatedAt == request.time;
+    }
+
+    function hasUpdatedTimestamps(data) {
+      return data.createdAt == existing().createdAt && data.updatedAt == request.time;
+    }
+
+    function canReadScopedRecord(data) {
+      return isAdmin()
+        || (isActiveUser() && (
+          data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && data.departmentId == userDoc().departmentId)
+        ));
+    }
+
+    function canReadDirectoryOrScopedRecord(data) {
+      return canReadScopedRecord(data)
+        || (isL3OrL4() && data.status == 'active');
+    }
+
+    // =========================================================
+    // VALIDATION BLUEPRINTS (Pillar 2: Anti-Update-Gap)
+    // =========================================================
+    function isValidUserAccount(data) {
+      return data.keys().hasAll([
+        'uid', 'email', 'displayName', 'role', 'isAdmin', 'status',
+        'centerId', 'departmentId', 'staffId', 'emailVerified',
+        'providers', 'invitationId', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'uid', 'email', 'displayName', 'role', 'isAdmin', 'status',
+        'centerId', 'departmentId', 'staffId', 'emailVerified',
+        'providers', 'invitationId', 'lastLoginAt', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.uid)
+      && isValidString(data.email, 3, 200)
+      && isValidString(data.displayName, 1, 160)
+      && data.role in ['L1', 'L2', 'L3', 'L4', 'L5']
+      && data.isAdmin is bool
+      && data.status in ['pending', 'active', 'suspended', 'inactive']
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && isValidString(data.staffId, 0, 64)
+      && data.emailVerified is bool
+      && isValidStringList(data.providers, 10)
+      && isValidString(data.invitationId, 0, 128)
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidInvitation(data) {
+      return data.keys().hasAll([
+        'id', 'email', 'fullName', 'staffId', 'role', 'isAdmin',
+        'centerId', 'departmentId', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'email', 'fullName', 'staffId', 'role', 'isAdmin',
+        'centerId', 'departmentId', 'status', 'claimedByUid', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidString(data.email, 3, 200)
+      && isValidString(data.fullName, 1, 160)
+      && isValidId(data.staffId)
+      && data.role in ['L1', 'L2', 'L3', 'L4', 'L5']
+      && data.isAdmin is bool
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.status in ['invited', 'claimed', 'revoked']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidStaffProfile(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'fullName', 'officialEmail', 'position', 'grade', 'scheme',
+        'isLecturer', 'centerId', 'centerName', 'departmentId', 'departmentName',
+        'unit', 'orgPosition', 'headOfCenter', 'headOfDepartment',
+        'highestQualification', 'primaryExpertise', 'secondaryExpertise',
+        'digitalCompetencies', 'expertiseKeywords', 'completionPercent', 'missingSections',
+        'hasPhoto', 'photoDisplayUrl', 'certificateCount', 'publicationCount',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'fullName', 'officialEmail', 'position', 'grade', 'scheme',
+        'isLecturer', 'centerId', 'centerName', 'departmentId', 'departmentName',
+        'unit', 'orgPosition', 'headOfCenter', 'headOfDepartment',
+        'highestQualification', 'primaryExpertise', 'secondaryExpertise',
+        'digitalCompetencies', 'expertiseKeywords', 'completionPercent', 'missingSections',
+        'hasPhoto', 'photoDisplayUrl', 'certificateCount', 'publicationCount',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && data.id == data.staffId
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.fullName, 1, 160)
+      && isValidString(data.officialEmail, 3, 200)
+      && isValidString(data.position, 0, 120)
+      && isValidString(data.grade, 0, 40)
+      && isValidString(data.scheme, 0, 80)
+      && data.isLecturer is bool
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.centerName, 0, 160)
+      && isValidString(data.departmentId, 0, 64)
+      && isValidString(data.departmentName, 0, 160)
+      && isValidString(data.unit, 0, 120)
+      && isValidString(data.orgPosition, 0, 120)
+      && isValidString(data.headOfCenter, 0, 160)
+      && isValidString(data.headOfDepartment, 0, 160)
+      && isValidString(data.highestQualification, 0, 80)
+      && isValidString(data.primaryExpertise, 0, 160)
+      && isValidString(data.secondaryExpertise, 0, 160)
+      && isValidStringList(data.digitalCompetencies, 30)
+      && isValidStringList(data.expertiseKeywords, 30)
+      && data.completionPercent is number && data.completionPercent >= 0 && data.completionPercent <= 100
+      && isValidStringList(data.missingSections, 12)
+      && data.hasPhoto is bool
+      && isValidString(data.photoDisplayUrl, 0, 500)
+      && data.certificateCount is number && data.certificateCount >= 0 && data.certificateCount <= 500
+      && data.publicationCount is number && data.publicationCount >= 0 && data.publicationCount <= 500
+      && data.status in ['active', 'inactive', 'draft']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidStaffPrivatePII(data) {
+      return data.keys().hasAll([
+        'staffId', 'uid', 'centerId', 'departmentId', 'phone', 'gender', 'icNumber',
+        'altContact', 'appointmentDate', 'serviceStatus', 'yearsOfService',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'staffId', 'uid', 'centerId', 'departmentId', 'phone', 'gender', 'icNumber',
+        'altContact', 'appointmentDate', 'serviceStatus', 'yearsOfService',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && isValidString(data.phone, 0, 40)
+      && isValidString(data.gender, 0, 30)
+      && isValidString(data.icNumber, 0, 24)
+      && isValidString(data.altContact, 0, 160)
+      && isValidString(data.appointmentDate, 0, 32)
+      && isValidString(data.serviceStatus, 0, 60)
+      && data.yearsOfService is number && data.yearsOfService >= 0 && data.yearsOfService <= 80
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidOrganization(data) {
+      return data.keys().hasAll([
+        'id', 'code', 'name', 'headName', 'headUid', 'location', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'code', 'name', 'headName', 'headUid', 'location', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidString(data.code, 1, 24)
+      && isValidString(data.name, 1, 160)
+      && isValidString(data.headName, 0, 160)
+      && isValidString(data.headUid, 0, 128)
+      && isValidString(data.location, 0, 120)
+      && data.status in ['active', 'inactive']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidDepartment(data) {
+      return data.keys().hasAll([
+        'id', 'centerId', 'code', 'name', 'headName', 'headUid', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'centerId', 'code', 'name', 'headName', 'headUid', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.centerId)
+      && isValidString(data.code, 1, 24)
+      && isValidString(data.name, 1, 160)
+      && isValidString(data.headName, 0, 160)
+      && isValidString(data.headUid, 0, 128)
+      && data.status in ['active', 'inactive']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidQualification(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'level', 'institution',
+        'fieldOfStudy', 'graduationYear', 'notes', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'level', 'institution',
+        'fieldOfStudy', 'graduationYear', 'notes', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.level in ['PhD', 'Sarjana', 'Sarjana Muda', 'Diploma', 'Kelayakan Lain']
+      && isValidString(data.institution, 1, 200)
+      && isValidString(data.fieldOfStudy, 1, 200)
+      && isValidString(data.graduationYear, 1, 10)
+      && isValidString(data.notes, 0, 500)
+      && data.status in ['active', 'archived']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidExpertise(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'primaryExpertise', 'secondaryExpertise',
+        'specializations', 'researchAreas', 'teachingAreas', 'trainingAreas', 'keywords',
+        'teachingExp', 'managementExp', 'facilitatorExp', 'speakerExp', 'coachExp',
+        'projectExp', 'professionalExp', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'primaryExpertise', 'secondaryExpertise',
+        'specializations', 'researchAreas', 'teachingAreas', 'trainingAreas', 'keywords',
+        'teachingExp', 'managementExp', 'facilitatorExp', 'speakerExp', 'coachExp',
+        'projectExp', 'professionalExp', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && isValidString(data.primaryExpertise, 0, 160)
+      && isValidString(data.secondaryExpertise, 0, 160)
+      && isValidStringList(data.specializations, 20)
+      && isValidStringList(data.researchAreas, 20)
+      && isValidStringList(data.teachingAreas, 20)
+      && isValidStringList(data.trainingAreas, 20)
+      && isValidStringList(data.keywords, 30)
+      && isValidString(data.teachingExp, 0, 1500)
+      && isValidString(data.managementExp, 0, 1500)
+      && isValidString(data.facilitatorExp, 0, 1500)
+      && isValidString(data.speakerExp, 0, 1500)
+      && isValidString(data.coachExp, 0, 1500)
+      && isValidString(data.projectExp, 0, 1500)
+      && isValidString(data.professionalExp, 0, 1500)
+      && data.status in ['active', 'draft']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidCompetency(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'items', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'items', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.items is list && data.items.size() <= 30
+      && (data.items.size() == 0 || (data.items[0] is map && data.items[0].keys().hasOnly(['categoryId', 'categoryName', 'level', 'years', 'notes'])))
+      && data.status in ['active', 'draft']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidPublication(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'type', 'title',
+        'publisherOrVenue', 'year', 'url', 'description', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'type', 'title',
+        'publisherOrVenue', 'year', 'url', 'description', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.type in ['Buku', 'Artikel Jurnal', 'Prosiding', 'Penyelidikan', 'Inovasi', 'Pengiktirafan']
+      && isValidString(data.title, 1, 240)
+      && isValidString(data.publisherOrVenue, 0, 200)
+      && isValidString(data.year, 1, 10)
+      && isValidString(data.url, 0, 500)
+      && isValidString(data.description, 0, 1000)
+      && data.status in ['active', 'archived']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidCertificate(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'title', 'category',
+        'certificateDate', 'driveFileId', 'driveFolderId', 'fileName', 'mimeType',
+        'fileSize', 'uploadedBy', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'title', 'category',
+        'certificateDate', 'driveFileId', 'driveFolderId', 'fileName', 'mimeType',
+        'fileSize', 'uploadedBy', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 1, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && isValidString(data.title, 1, 200)
+      && data.category in ['Sijil Akademik', 'Sijil Profesional', 'Sijil Kompetensi', 'Sijil Latihan', 'Sijil Pengiktirafan', 'Dokumen Lain']
+      && isValidString(data.certificateDate, 0, 32)
+      && isValidString(data.driveFileId, 1, 200)
+      && isValidString(data.driveFolderId, 0, 200)
+      && isValidString(data.fileName, 1, 255)
+      && isValidString(data.mimeType, 1, 120)
+      && data.fileSize is number && data.fileSize >= 0 && data.fileSize <= 52428800
+      && isValidString(data.uploadedBy, 1, 128)
+      && data.status in ['active', 'replaced', 'deleted', 'orphan_pending']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidProfilePhoto(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'originalDriveFileId',
+        'displayDriveFileId', 'originalFileName', 'displayFileName', 'cropX', 'cropY',
+        'zoom', 'alignX', 'alignY', 'aspectRatio', 'mimeType', 'fileSize', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'originalDriveFileId',
+        'displayDriveFileId', 'originalFileName', 'displayFileName', 'cropX', 'cropY',
+        'zoom', 'alignX', 'alignY', 'aspectRatio', 'mimeType', 'fileSize', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 1, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && isValidString(data.originalDriveFileId, 1, 200)
+      && isValidString(data.displayDriveFileId, 1, 200)
+      && isValidString(data.originalFileName, 1, 255)
+      && isValidString(data.displayFileName, 1, 255)
+      && data.cropX is number && data.cropY is number && data.zoom is number
+      && data.zoom >= 0.5 && data.zoom <= 5
+      && data.alignX in ['left', 'center', 'right']
+      && data.alignY in ['top', 'center', 'bottom']
+      && data.aspectRatio == '1:1'
+      && isValidString(data.mimeType, 1, 64)
+      && data.fileSize is number && data.fileSize >= 0 && data.fileSize <= 20971520
+      && data.status in ['active', 'replaced', 'deleted']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidDriveSetting(data) {
+      return data.keys().hasAll([
+        'id', 'status', 'connectedEmail', 'rootFolderId', 'folderIds',
+        'lastConnectedAt', 'lastUploadAt', 'uploadedDocumentsCount', 'uploadedPhotosCount',
+        'maxPhotoSizeMb', 'maxCertSizeMb', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'status', 'connectedEmail', 'rootFolderId', 'folderIds',
+        'lastConnectedAt', 'lastUploadAt', 'uploadedDocumentsCount', 'uploadedPhotosCount',
+        'maxPhotoSizeMb', 'maxCertSizeMb', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && data.status in ['connected', 'disconnected', 'error', 'pending_configuration']
+      && isValidString(data.connectedEmail, 0, 200)
+      && isValidString(data.rootFolderId, 0, 200)
+      && data.folderIds is map
+      && isValidString(data.lastConnectedAt, 0, 64)
+      && isValidString(data.lastUploadAt, 0, 64)
+      && data.uploadedDocumentsCount is number && data.uploadedDocumentsCount >= 0
+      && data.uploadedPhotosCount is number && data.uploadedPhotosCount >= 0
+      && data.maxPhotoSizeMb is number && data.maxPhotoSizeMb >= 1 && data.maxPhotoSizeMb <= 50
+      && data.maxCertSizeMb is number && data.maxCertSizeMb >= 1 && data.maxCertSizeMb <= 100
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+        'id', 'actorUid', 'actorEmail', 'staffId', 'actionType',
+        'targetType', 'targetId', 'outcome', 'details', 'createdAt'
+      ]) && data.keys().hasOnly([
+        'id', 'actorUid', 'actorEmail', 'staffId', 'actionType',
+        'targetType', 'targetId', 'outcome', 'details', 'createdAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.actorUid)
+      && data.actorUid == request.auth.uid
+      && isValidString(data.actorEmail, 1, 200)
+      && isValidString(data.staffId, 0, 64)
+      && isValidString(data.actionType, 1, 80)
+      && isValidString(data.targetType, 1, 80)
+      && isValidString(data.targetId, 1, 128)
+      && data.outcome in ['success', 'failure']
+      && isValidString(data.details, 0, 500)
+      && data.createdAt == request.time;
+    }
+
+    function isValidGeneratedProfile(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'templateType',
+        'dataVersion', 'driveFileId', 'fileName', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId', 'templateType',
+        'dataVersion', 'driveFileId', 'fileName', 'status',
+        'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.templateType in ['ringkas', 'lengkap']
+      && isValidString(data.dataVersion, 1, 64)
+      && isValidString(data.driveFileId, 0, 200)
+      && isValidString(data.fileName, 1, 255)
+      && data.status in ['generated', 'stored_in_drive']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidSystemSetting(data) {
+      return data.keys().hasAll([
+        'id', 'systemName', 'institutionName', 'expertiseCategories', 'competencyCategories',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'systemName', 'institutionName', 'expertiseCategories', 'competencyCategories',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidString(data.systemName, 1, 160)
+      && isValidString(data.institutionName, 1, 160)
+      && isValidStringList(data.expertiseCategories, 60)
+      && isValidStringList(data.competencyCategories, 60)
+      && data.status == 'active'
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    // =========================================================
+    // COLLECTION MATCH BLOCKS
+    // =========================================================
+
+    // 1. users
+    match /users/{uid} {
+      allow get: if isSignedIn() && isValidId(uid) && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn() && isValidId(uid) && isValidUserAccount(incoming())
+        && hasCreatedTimestamps(incoming())
+        && (
+          (isBootstrapAdmin() && request.auth.uid == uid && incoming().uid == uid && incoming().isAdmin == true && incoming().status == 'active')
+          || isAdmin()
+          || (
+            isVerified() && request.auth.uid == uid && incoming().uid == uid
+            && incoming().email == request.auth.token.email
+            && incoming().invitationId != ''
+            && exists(/databases/$(database)/documents/invitations/$(incoming().invitationId))
+            && get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.status == 'invited'
+            && get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.email == request.auth.token.email
+            && incoming().role == get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.role
+            && incoming().isAdmin == get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.isAdmin
+            && incoming().centerId == get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.centerId
+            && incoming().departmentId == get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.departmentId
+            && incoming().staffId == get(/databases/$(database)/documents/invitations/$(incoming().invitationId)).data.staffId
+            && incoming().status == 'active'
+          )
+          || (
+            isVerified() && request.auth.uid == uid && incoming().uid == uid
+            && incoming().email == request.auth.token.email
+            && incoming().status == 'pending'
+            && incoming().isAdmin == false
+            && incoming().role == 'L5'
+            && incoming().invitationId == ''
+          )
+        );
+
+      allow update: if isSignedIn() && isValidId(uid) && isValidUserAccount(incoming())
+        && hasUpdatedTimestamps(incoming())
+        && incoming().uid == existing().uid
+        && (
+          (isAdmin() && !(request.auth.uid == uid && existing().isAdmin == false && incoming().isAdmin == true))
+          || (
+            isVerified() && request.auth.uid == uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'emailVerified', 'providers', 'lastLoginAt', 'updatedAt', 'updatedBy'])
+            && incoming().updatedBy == request.auth.uid
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(uid) && request.auth.uid != uid;
+    }
+
+    // 2. invitations
+    match /invitations/{inviteId} {
+      allow get: if isVerified() && isValidId(inviteId) && (isAdmin() || resource == null || resource.data.email == request.auth.token.email);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(inviteId) && isValidInvitation(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == inviteId;
+      allow update: if isVerified() && isValidId(inviteId) && isValidInvitation(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && (
+        isAdmin()
+        || (
+          existing().status == 'invited'
+          && existing().email == request.auth.token.email
+          && incoming().status == 'claimed'
+          && incoming().claimedByUid == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedByUid', 'updatedAt', 'updatedBy'])
+        )
+      );
+      allow delete: if isAdmin() && isValidId(inviteId);
+    }
+
+    // 3. staff_profiles + isolated PII subcollection
+    match /staff_profiles/{staffId} {
+      allow get: if isValidId(staffId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
+        ));
+
+      allow create: if isVerified() && isValidId(staffId) && isValidStaffProfile(incoming()) && hasCreatedTimestamps(incoming()) && (
+        isAdmin()
+        || (
+          isActiveUser()
+          && incoming().uid == request.auth.uid
+          && incoming().staffId == userDoc().staffId
+          && incoming().createdBy == request.auth.uid
+          && incoming().updatedBy == request.auth.uid
+        )
+      );
+
+      allow update: if isVerified() && isValidId(staffId) && isValidStaffProfile(incoming()) && hasUpdatedTimestamps(incoming())
+        && incoming().id == existing().id
+        && incoming().staffId == existing().staffId
+        && (
+          isAdmin()
+          || (
+            isActiveUser()
+            && existing().uid == request.auth.uid
+            && incoming().uid == existing().uid
+            && incoming().updatedBy == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'fullName', 'officialEmail', 'position', 'grade', 'scheme', 'isLecturer',
+              'centerId', 'centerName', 'departmentId', 'departmentName', 'unit', 'orgPosition',
+              'headOfCenter', 'headOfDepartment', 'highestQualification', 'primaryExpertise',
+              'secondaryExpertise', 'digitalCompetencies', 'expertiseKeywords',
+              'completionPercent', 'missingSections', 'hasPhoto', 'photoDisplayUrl',
+              'certificateCount', 'publicationCount', 'status', 'updatedAt', 'updatedBy'
+            ])
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(staffId);
+
+      match /private/{docId} {
+        allow get: if isValidId(staffId) && isValidId(docId) && canReadScopedRecord(resource.data);
+        allow list: if isAdmin()
+          || (isActiveUser() && (
+            resource.data.uid == request.auth.uid
+            || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+            || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          ));
+        allow create: if isVerified() && isValidId(staffId) && isValidId(docId) && isValidStaffPrivatePII(incoming()) && hasCreatedTimestamps(incoming())
+          && incoming().staffId == staffId
+          && (isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && userDoc().staffId == staffId));
+        allow update: if isVerified() && isValidId(staffId) && isValidId(docId) && isValidStaffPrivatePII(incoming()) && hasUpdatedTimestamps(incoming())
+          && incoming().staffId == existing().staffId
+          && (
+            isAdmin()
+            || (
+              isActiveUser()
+              && existing().uid == request.auth.uid
+              && incoming().uid == existing().uid
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'centerId', 'departmentId', 'phone', 'gender', 'icNumber', 'altContact',
+                'appointmentDate', 'serviceStatus', 'yearsOfService', 'updatedAt', 'updatedBy'
+              ])
+            )
+          );
+        allow delete: if isAdmin() && isValidId(staffId) && isValidId(docId);
+      }
+    }
+
+    // 4. organizations
+    match /organizations/{centerId} {
+      allow get: if isActiveUser() && isValidId(centerId);
+      allow list: if isActiveUser();
+      allow create: if isAdmin() && isValidId(centerId) && isValidOrganization(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == centerId;
+      allow update: if isAdmin() && isValidId(centerId) && isValidOrganization(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id;
+      allow delete: if isAdmin() && isValidId(centerId);
+    }
+
+    // 5. departments
+    match /departments/{departmentId} {
+      allow get: if isActiveUser() && isValidId(departmentId);
+      allow list: if isActiveUser();
+      allow create: if isAdmin() && isValidId(departmentId) && isValidDepartment(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == departmentId && exists(/databases/$(database)/documents/organizations/$(incoming().centerId));
+      allow update: if isAdmin() && isValidId(departmentId) && isValidDepartment(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id;
+      allow delete: if isAdmin() && isValidId(departmentId);
+    }
+
+    // 6. qualifications
+    match /qualifications/{qualId} {
+      allow get: if isValidId(qualId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(qualId) && isValidQualification(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == qualId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
+      );
+      allow update: if isVerified() && isValidId(qualId) && isValidQualification(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId && (
+        isAdmin()
+        || (isActiveUser() && existing().uid == request.auth.uid && incoming().uid == existing().uid && incoming().diff(existing()).affectedKeys().hasOnly(['centerId', 'departmentId', 'level', 'institution', 'fieldOfStudy', 'graduationYear', 'notes', 'status', 'updatedAt', 'updatedBy']))
+      );
+      allow delete: if isVerified() && isValidId(qualId) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
+    }
+
+    // 7. expertise
+    match /expertise/{expId} {
+      allow get: if isValidId(expId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(expId) && isValidExpertise(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == expId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
+      );
+      allow update: if isVerified() && isValidId(expId) && isValidExpertise(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId && (
+        isAdmin()
+        || (isActiveUser() && existing().uid == request.auth.uid && incoming().uid == existing().uid && incoming().diff(existing()).affectedKeys().hasOnly([
+          'centerId', 'departmentId', 'primaryExpertise', 'secondaryExpertise', 'specializations',
+          'researchAreas', 'teachingAreas', 'trainingAreas', 'keywords',
+          'teachingExp', 'managementExp', 'facilitatorExp', 'speakerExp', 'coachExp',
+          'projectExp', 'professionalExp', 'status', 'updatedAt', 'updatedBy'
+        ]))
+      );
+      allow delete: if isAdmin() && isValidId(expId);
+    }
+
+    // 8. competencies
+    match /competencies/{compId} {
+      allow get: if isValidId(compId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(compId) && isValidCompetency(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == compId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
+      );
+      allow update: if isVerified() && isValidId(compId) && isValidCompetency(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId && (
+        isAdmin()
+        || (isActiveUser() && existing().uid == request.auth.uid && incoming().uid == existing().uid && incoming().diff(existing()).affectedKeys().hasOnly(['centerId', 'departmentId', 'items', 'status', 'updatedAt', 'updatedBy']))
+      );
+      allow delete: if isAdmin() && isValidId(compId);
+    }
+
+    // 9. publications
+    match /publications/{pubId} {
+      allow get: if isValidId(pubId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(pubId) && isValidPublication(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == pubId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
+      );
+      allow update: if isVerified() && isValidId(pubId) && isValidPublication(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId && (
+        isAdmin()
+        || (isActiveUser() && existing().uid == request.auth.uid && incoming().uid == existing().uid && incoming().diff(existing()).affectedKeys().hasOnly(['centerId', 'departmentId', 'type', 'title', 'publisherOrVenue', 'year', 'url', 'description', 'status', 'updatedAt', 'updatedBy']))
+      );
+      allow delete: if isVerified() && isValidId(pubId) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
+    }
+
+    // 10. certificates
+    match /certificates/{certId} {
+      allow get: if isValidId(certId) && canReadScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+        ));
+      allow create: if isVerified() && isValidId(certId) && isValidCertificate(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == certId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
+      );
+      allow update: if isVerified() && isValidId(certId) && isValidCertificate(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId && (
+        isAdmin()
+        || (isActiveUser() && existing().uid == request.auth.uid && incoming().uid == existing().uid && incoming().diff(existing()).affectedKeys().hasOnly(['centerId', 'departmentId', 'title', 'category', 'certificateDate', 'driveFileId', 'driveFolderId', 'fileName', 'mimeType', 'fileSize', 'status', 'updatedAt', 'updatedBy']))
+      );
+      allow delete: if isVerified() && isValidId(certId) && (isAdmin() || (isActiveUser() && existing().uid == request.auth.uid));
+    }
+
+    // 11. profile_photos
+    match /profile_photos/{photoId} {
+      allow get: if isValidId(photoId) && canReadDirectoryOrScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+          || ((userDoc().role == 'L3' || userDoc().role == 'L4') && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(photoId) && isValidProfilePhoto(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == photoId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid && incoming().staffId == userDoc().staffId)
+      );
+      allow update: if isVerified() && isValidId(photoId) && isValidProfilePhoto(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId && (
+        isAdmin()
+        || (isActiveUser() && existing().uid == request.auth.uid && incoming().uid == existing().uid && incoming().diff(existing()).affectedKeys().hasOnly(['centerId', 'departmentId', 'displayDriveFileId', 'displayFileName', 'cropX', 'cropY', 'zoom', 'alignX', 'alignY', 'status', 'updatedAt', 'updatedBy']))
+      );
+      allow delete: if isAdmin() && isValidId(photoId);
+    }
+
+    // 12. drive_settings
+    match /drive_settings/{settingId} {
+      allow get: if isActiveUser() && isValidId(settingId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(settingId) && isValidDriveSetting(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == settingId;
+      allow update: if isAdmin() && isValidId(settingId) && isValidDriveSetting(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id;
+      allow delete: if false;
+    }
+
+    // 13. audit_logs (Immutable security log)
+    match /audit_logs/{logId} {
+      allow get: if isAdmin() && isValidId(logId);
+      allow list: if isAdmin();
+      allow create: if isVerified() && isValidId(logId) && isValidAuditLog(incoming()) && incoming().id == logId && (isBootstrapAdmin() || hasUserDoc());
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // 14. generated_profiles
+    match /generated_profiles/{genId} {
+      allow get: if isValidId(genId) && canReadScopedRecord(resource.data);
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userDoc().role == 'L1' && resource.data.centerId == userDoc().centerId)
+          || (userDoc().role == 'L2' && resource.data.departmentId == userDoc().departmentId)
+        ));
+      allow create: if isVerified() && isValidId(genId) && isValidGeneratedProfile(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == genId && (
+        isAdmin() || (isActiveUser() && incoming().uid == request.auth.uid)
+      );
+      allow update: if isAdmin() && isValidId(genId) && isValidGeneratedProfile(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id;
+      allow delete: if isAdmin() && isValidId(genId);
+    }
+
+    // 15. system_settings
+    match /system_settings/{settingId} {
+      allow get: if isActiveUser() && isValidId(settingId);
+      allow list: if isActiveUser();
+      allow create: if isAdmin() && isValidId(settingId) && isValidSystemSetting(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == settingId;
+      allow update: if isAdmin() && isValidId(settingId) && isValidSystemSetting(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id;
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,440 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Akaun pengguna sistem yang dipautkan kepada Firebase Authentication UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 160 },
+        "staffId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]*$" },
+        "role": { "type": "string", "enum": ["L1", "L2", "L3", "L4", "L5"] },
+        "isAdmin": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "active", "suspended", "inactive"] },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "emailVerified": { "type": "boolean" },
+        "providers": { "type": "array" },
+        "invitationId": { "type": "string", "maxLength": 128 },
+        "lastLoginAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["uid", "email", "displayName", "role", "isAdmin", "status", "centerId", "departmentId", "staffId", "emailVerified", "providers", "invitationId", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "UserInvitation": {
+      "title": "UserInvitation",
+      "description": "Pra-pendaftaran akaun oleh Admin sebelum log masuk pertama pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "fullName": { "type": "string", "maxLength": 160 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "role": { "type": "string", "enum": ["L1", "L2", "L3", "L4", "L5"] },
+        "isAdmin": { "type": "boolean" },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["invited", "claimed", "revoked"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "email", "fullName", "staffId", "role", "isAdmin", "centerId", "departmentId", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "StaffProfile": {
+      "title": "StaffProfile",
+      "description": "Profil organisasi, perkhidmatan, ringkasan kepakaran dan kelengkapan pegawai IAB (tanpa PII sensitif).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "staffId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 160 },
+        "officialEmail": { "type": "string", "format": "email", "maxLength": 200 },
+        "position": { "type": "string", "maxLength": 120 },
+        "grade": { "type": "string", "maxLength": 40 },
+        "scheme": { "type": "string", "maxLength": 80 },
+        "isLecturer": { "type": "boolean" },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "centerName": { "type": "string", "maxLength": 160 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "departmentName": { "type": "string", "maxLength": 160 },
+        "unit": { "type": "string", "maxLength": 120 },
+        "orgPosition": { "type": "string", "maxLength": 120 },
+        "headOfCenter": { "type": "string", "maxLength": 160 },
+        "headOfDepartment": { "type": "string", "maxLength": 160 },
+        "highestQualification": { "type": "string", "maxLength": 80 },
+        "primaryExpertise": { "type": "string", "maxLength": 160 },
+        "secondaryExpertise": { "type": "string", "maxLength": 160 },
+        "digitalCompetencies": { "type": "array" },
+        "expertiseKeywords": { "type": "array" },
+        "completionPercent": { "type": "number" },
+        "missingSections": { "type": "array" },
+        "hasPhoto": { "type": "boolean" },
+        "photoDisplayUrl": { "type": "string", "maxLength": 500 },
+        "certificateCount": { "type": "number" },
+        "publicationCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "inactive", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "fullName", "officialEmail", "position", "grade", "scheme", "isLecturer", "centerId", "centerName", "departmentId", "departmentName", "highestQualification", "primaryExpertise", "completionPercent", "hasPhoto", "certificateCount", "publicationCount", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "StaffPrivatePII": {
+      "title": "StaffPrivatePII",
+      "description": "Maklumat peribadi terhad pegawai (telefon, jantina, no. KP bertopeng, tarikh lantikan).",
+      "type": "object",
+      "properties": {
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "gender": { "type": "string", "maxLength": 30 },
+        "icNumber": { "type": "string", "maxLength": 24 },
+        "altContact": { "type": "string", "maxLength": 160 },
+        "appointmentDate": { "type": "string", "maxLength": 32 },
+        "serviceStatus": { "type": "string", "maxLength": 60 },
+        "yearsOfService": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["staffId", "uid", "centerId", "departmentId", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "OrganizationCenter": {
+      "title": "OrganizationCenter",
+      "description": "Pusat dalam Institut Aminuddin Baki (IAB).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "code": { "type": "string", "maxLength": 24 },
+        "name": { "type": "string", "maxLength": 160 },
+        "headName": { "type": "string", "maxLength": 160 },
+        "headUid": { "type": "string", "maxLength": 128 },
+        "location": { "type": "string", "maxLength": 120 },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "code", "name", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Jabatan di bawah Pusat IAB.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "code": { "type": "string", "maxLength": 24 },
+        "name": { "type": "string", "maxLength": 160 },
+        "headName": { "type": "string", "maxLength": 160 },
+        "headUid": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "centerId", "code", "name", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "Qualification": {
+      "title": "Qualification",
+      "description": "Kelayakan akademik pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "level": { "type": "string", "enum": ["PhD", "Sarjana", "Sarjana Muda", "Diploma", "Kelayakan Lain"] },
+        "institution": { "type": "string", "maxLength": 200 },
+        "fieldOfStudy": { "type": "string", "maxLength": 200 },
+        "graduationYear": { "type": "string", "maxLength": 10 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["active", "archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "level", "institution", "fieldOfStudy", "graduationYear", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "ExpertiseRecord": {
+      "title": "ExpertiseRecord",
+      "description": "Rekod terperinci kepakaran, penyelidikan, pengajaran dan pengalaman pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "primaryExpertise": { "type": "string", "maxLength": 160 },
+        "secondaryExpertise": { "type": "string", "maxLength": 160 },
+        "specializations": { "type": "array" },
+        "researchAreas": { "type": "array" },
+        "teachingAreas": { "type": "array" },
+        "trainingAreas": { "type": "array" },
+        "keywords": { "type": "array" },
+        "teachingExp": { "type": "string", "maxLength": 1500 },
+        "managementExp": { "type": "string", "maxLength": 1500 },
+        "facilitatorExp": { "type": "string", "maxLength": 1500 },
+        "speakerExp": { "type": "string", "maxLength": 1500 },
+        "coachExp": { "type": "string", "maxLength": 1500 },
+        "projectExp": { "type": "string", "maxLength": 1500 },
+        "professionalExp": { "type": "string", "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["active", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "primaryExpertise", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "CompetencyRecord": {
+      "title": "CompetencyRecord",
+      "description": "Kompetensi digital dan AI pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "items": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "items", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "Publication": {
+      "title": "Publication",
+      "description": "Rekod penerbitan, penyelidikan, inovasi dan pengiktirafan pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["Buku", "Artikel Jurnal", "Prosiding", "Penyelidikan", "Inovasi", "Pengiktirafan"] },
+        "title": { "type": "string", "maxLength": 240 },
+        "publisherOrVenue": { "type": "string", "maxLength": 200 },
+        "year": { "type": "string", "maxLength": 10 },
+        "url": { "type": "string", "maxLength": 500 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["active", "archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "type", "title", "year", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "Certificate": {
+      "title": "Certificate",
+      "description": "Metadata sijil dan dokumen pegawai yang disimpan dalam Google Drive.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Sijil Akademik", "Sijil Profesional", "Sijil Kompetensi", "Sijil Latihan", "Sijil Pengiktirafan", "Dokumen Lain"] },
+        "certificateDate": { "type": "string", "maxLength": 32 },
+        "driveFileId": { "type": "string", "maxLength": 200 },
+        "driveFolderId": { "type": "string", "maxLength": 200 },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "mimeType": { "type": "string", "maxLength": 120 },
+        "fileSize": { "type": "number" },
+        "uploadedBy": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["active", "replaced", "deleted", "orphan_pending"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "title", "category", "driveFileId", "fileName", "mimeType", "fileSize", "uploadedBy", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "ProfilePhoto": {
+      "title": "ProfilePhoto",
+      "description": "Metadata gambar asal, gambar paparan 1:1 dan koordinat crop/zoom pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "originalDriveFileId": { "type": "string", "maxLength": 200 },
+        "displayDriveFileId": { "type": "string", "maxLength": 200 },
+        "originalFileName": { "type": "string", "maxLength": 255 },
+        "displayFileName": { "type": "string", "maxLength": 255 },
+        "cropX": { "type": "number" },
+        "cropY": { "type": "number" },
+        "zoom": { "type": "number" },
+        "alignX": { "type": "string", "enum": ["left", "center", "right"] },
+        "alignY": { "type": "string", "enum": ["top", "center", "bottom"] },
+        "aspectRatio": { "type": "string", "maxLength": 16 },
+        "mimeType": { "type": "string", "maxLength": 64 },
+        "fileSize": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "replaced", "deleted"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "originalDriveFileId", "displayDriveFileId", "cropX", "cropY", "zoom", "alignX", "alignY", "aspectRatio", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "DriveSetting": {
+      "title": "DriveSetting",
+      "description": "Status dan konfigurasi bukan rahsia sambungan Google Drive pemilik storan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["connected", "disconnected", "error", "pending_configuration"] },
+        "connectedEmail": { "type": "string", "maxLength": 200 },
+        "rootFolderId": { "type": "string", "maxLength": 200 },
+        "folderIds": { "type": "object" },
+        "lastConnectedAt": { "type": "string", "maxLength": 64 },
+        "lastUploadAt": { "type": "string", "maxLength": 64 },
+        "uploadedDocumentsCount": { "type": "number" },
+        "uploadedPhotosCount": { "type": "number" },
+        "maxPhotoSizeMb": { "type": "number" },
+        "maxCertSizeMb": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "status", "maxPhotoSizeMb", "maxCertSizeMb", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Jejak audit kekal bagi aktiviti keselamatan, profil, dokumen dan pentadbiran.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 200 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "actionType": { "type": "string", "maxLength": 80 },
+        "targetType": { "type": "string", "maxLength": 80 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "outcome": { "type": "string", "enum": ["success", "failure"] },
+        "details": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "actorUid", "actorEmail", "actionType", "targetType", "targetId", "outcome", "details", "createdAt"]
+    },
+    "GeneratedProfile": {
+      "title": "GeneratedProfile",
+      "description": "Rekod penjanaan PDF Profil Profesional pegawai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "templateType": { "type": "string", "enum": ["ringkas", "lengkap"] },
+        "dataVersion": { "type": "string", "maxLength": 64 },
+        "driveFileId": { "type": "string", "maxLength": 200 },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "status": { "type": "string", "enum": ["generated", "stored_in_drive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "templateType", "dataVersion", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "Tetapan sistem, katalog kategori kepakaran, dan senarai kompetensi digital/AI kawalan Admin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "systemName": { "type": "string", "maxLength": 160 },
+        "institutionName": { "type": "string", "maxLength": 160 },
+        "expertiseCategories": { "type": "array" },
+        "competencyCategories": { "type": "array" },
+        "status": { "type": "string", "enum": ["active"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Akaun pengguna sistem dan status kelulusan RBAC."
+    },
+    "/invitations/{inviteId}": {
+      "schema": { "$ref": "#/entities/UserInvitation" },
+      "description": "Pra-kelulusan pengguna oleh Admin sebelum log masuk pertama."
+    },
+    "/staff_profiles/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffProfile" },
+      "description": "Profil organisasi, perkhidmatan dan kepakaran pegawai."
+    },
+    "/staff_profiles/{staffId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/StaffPrivatePII" },
+      "description": "PII terhad pegawai (telefon, no. KP, tarikh lantikan)."
+    },
+    "/organizations/{centerId}": {
+      "schema": { "$ref": "#/entities/OrganizationCenter" },
+      "description": "Senarai Pusat di bawah IAB."
+    },
+    "/departments/{departmentId}": {
+      "schema": { "$ref": "#/entities/Department" },
+      "description": "Senarai Jabatan di bawah Pusat IAB."
+    },
+    "/qualifications/{qualId}": {
+      "schema": { "$ref": "#/entities/Qualification" },
+      "description": "Rekod kelayakan akademik pegawai."
+    },
+    "/expertise/{expId}": {
+      "schema": { "$ref": "#/entities/ExpertiseRecord" },
+      "description": "Rekod kepakaran dan pengalaman pegawai."
+    },
+    "/competencies/{compId}": {
+      "schema": { "$ref": "#/entities/CompetencyRecord" },
+      "description": "Rekod kompetensi digital dan AI pegawai."
+    },
+    "/publications/{pubId}": {
+      "schema": { "$ref": "#/entities/Publication" },
+      "description": "Rekod penerbitan dan penyelidikan pegawai."
+    },
+    "/certificates/{certId}": {
+      "schema": { "$ref": "#/entities/Certificate" },
+      "description": "Metadata sijil dan dokumen yang disimpan dalam Google Drive."
+    },
+    "/profile_photos/{photoId}": {
+      "schema": { "$ref": "#/entities/ProfilePhoto" },
+      "description": "Metadata gambar asal dan paparan 1:1 dalam Google Drive."
+    },
+    "/drive_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/DriveSetting" },
+      "description": "Konfigurasi bukan rahsia sambungan Google Drive."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Jejak audit aktiviti sistem yang tidak boleh diubah."
+    },
+    "/generated_profiles/{genId}": {
+      "schema": { "$ref": "#/entities/GeneratedProfile" },
+      "description": "Rekod penjanaan PDF Profil Profesional."
+    },
+    "/system_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SystemSetting" },
+      "description": "Tetapan sistem dan katalog kategori kepakaran serta kompetensi."
+    }
+  }
+}

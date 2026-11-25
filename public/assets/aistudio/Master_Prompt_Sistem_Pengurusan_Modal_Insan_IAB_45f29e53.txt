@@ -1,0 +1,685 @@
+MASTER PROMPT SISTEM PENGURUSAN MODAL INSAN, BIODATA DAN KEPAKARAN
+INSTITUT AMINUDDIN BAKI (IAB)
+
+====================================================================== 1.
+PERANAN DAN OBJEKTIF PEMBANGUNAN
+======================================================================
+
+Bertindak sebagai pasukan pembangunan perisian profesional yang terdiri
+daripada: - Senior Full-Stack Developer - Solution Architect - Firebase
+and Google Cloud Engineer - Google Drive API Integration Specialist -
+UI/UX Designer - Database Architect - Cybersecurity Engineer - Quality
+Assurance Engineer
+
+Bangunkan sebuah aplikasi web yang lengkap, responsif, selamat dan boleh
+digunakan dalam persekitaran sebenar untuk mengurus biodata, maklumat
+perkhidmatan, kelayakan akademik, kepakaran, kompetensi, penerbitan,
+gambar profil dan sijil semua pegawai di Institut Aminuddin Baki (IAB).
+
+Nama sistem: SISTEM PENGURUSAN MODAL INSAN DAN KEPAKARAN IAB
+
+Tujuan utama: 1. Mengumpulkan semua maklumat pegawai dalam satu
+pangkalan data berpusat. 2. Membolehkan setiap pegawai mengemas kini
+profil sendiri. 3. Memudahkan Ketua Pusat dan Ketua Jabatan melihat
+maklumat pegawai mengikut skop kuasa. 4. Menyediakan direktori kepakaran
+untuk mengenal pasti tenaga pakar, fasilitator, penceramah dan
+jurulatih. 5. Menjana profil profesional pegawai secara automatik dalam
+PDF. 6. Menganalisis kapasiti, taburan dan jurang kepakaran organisasi.
+7. Menyimpan gambar asal dan semua dokumen sijil dalam satu akaun Google
+Drive pemilik storan yang ditetapkan. 8. Menyokong perancangan
+pembangunan kapasiti dan keputusan pengurusan berasaskan data.
+
+PENTING: Jangan hasilkan mockup statik semata-mata. Bangunkan aplikasi
+sebenar dengan fungsi yang disambungkan kepada authentication, database
+dan Google Drive apabila konfigurasi luaran disediakan. Jangan mendakwa
+integrasi telah berjaya jika belum diuji dengan akaun dan projek
+sebenar.
+
+======================================================================
+2. KEPUTUSAN DAN KONFIGURASI PROJEK
+======================================================================
+
+Gunakan konfigurasi berikut:
+
+-   Frontend: React + TypeScript.
+-   UI: Tailwind CSS atau komponen UI moden yang stabil.
+-   Authentication: Firebase Authentication.
+-   Kaedah login: Google Sign-In DAN Email/Password.
+-   Database: Firebase Firestore.
+-   File storage: Google Drive API.
+-   Backend: Firebase Cloud Functions atau Google Cloud Run.
+-   Backend authentication: Firebase Admin SDK.
+-   Chart: Recharts atau library visualisasi setara.
+-   PDF generation: library PDF yang sesuai dan stabil.
+-   Excel export: library yang sesuai dan stabil.
+-   Hosting: Firebase Hosting atau platform deployment yang serasi.
+
+Google Drive: - Gunakan satu akaun Google individu yang ditetapkan
+sebagai PEMILIK STORAN SISTEM. - Akaun ini bukan akaun Google setiap
+pegawai. - Semua gambar asal, gambar paparan, sijil dan PDF yang dijana
+disimpan dalam Drive pemilik storan. - Pegawai memuat naik fail melalui
+aplikasi; backend menyimpan fail menggunakan OAuth pemilik storan. -
+Jangan minta setiap pegawai menyambungkan Drive peribadi
+masing-masing. - Sediakan pelan kesinambungan, pemulihan akaun dan
+pemindahan pemilikan storan kepada organisasi. - Aktifkan MFA pada akaun
+pemilik storan. - Jangan jadikan dokumen awam.
+
+PENTING TENTANG DUA JENIS OAUTH: Firebase Google Sign-In digunakan untuk
+mengesahkan identiti pegawai. Google Drive OAuth digunakan secara
+berasingan untuk memberikan backend kebenaran mengurus fail dalam Drive
+pemilik storan. Jangan campurkan kedua-dua aliran pengesahan ini.
+
+======================================================================
+3. STRUKTUR ENAM HALAMAN UTAMA
+======================================================================
+
+PAGE 1 — WELCOME PAGE
+
+Fungsi: - Paparkan nama sistem dan identiti IAB. - Paparkan logo
+institusi jika aset rasmi dibekalkan. - Pengenalan ringkas sistem. -
+Statistik ringkas yang dibenarkan untuk paparan umum dalaman. - Butang
+Log Masuk. - Reka bentuk profesional, moden dan responsif. - Jangan
+dedahkan biodata atau maklumat peribadi tanpa login.
+
+PAGE 2 — LOGIN PAGE
+
+Sediakan: - Google Sign-In. - Login menggunakan emel dan kata laluan. -
+Forgot Password. - Email verification. - Logout. - Session management. -
+Redirect mengikut role dan kebenaran. - Paparan mesej ralat yang
+jelas. - Pengendalian akaun yang belum diluluskan. - Pengendalian akaun
+tidak aktif.
+
+Akaun pengguna mesti didaftarkan atau diluluskan oleh Admin. Jangan
+benarkan pendaftaran terbuka yang memberikan akses automatik kepada data
+organisasi.
+
+Jika pengguna menggunakan Google Sign-In dan Email/Password dengan emel
+yang sama, laksanakan account linking secara selamat supaya satu
+individu tidak mempunyai dua profil. Gunakan Firebase UID sebagai
+pengenal identiti utama. Kendalikan konflik credential dan jangan
+pautkan akaun hanya berdasarkan andaian emel tanpa proses pengesahan
+Firebase yang sah.
+
+PAGE 3 — MAKLUMAT PEGAWAI
+
+Setiap pengguna boleh melihat dan mengemas kini profil sendiri.
+
+Sediakan borang berbahagian seperti berikut:
+
+A. MAKLUMAT PERIBADI - Nama penuh. - Emel rasmi. - Nombor telefon. -
+Jantina jika diperlukan. - Nombor kad pengenalan hanya jika benar-benar
+diperlukan dan dengan akses terhad. - Maklumat hubungan lain yang
+diluluskan.
+
+B. MAKLUMAT PERKHIDMATAN - Jawatan. - Gred jawatan. - Skim
+perkhidmatan. - Tarikh lantikan jika diperlukan. - Status
+perkhidmatan. - Pengalaman perkhidmatan.
+
+C. MAKLUMAT ORGANISASI - Pusat. - Jabatan. - Unit. - Jawatan
+organisasi. - Ketua Pusat. - Ketua Jabatan.
+
+D. KELAYAKAN AKADEMIK - Diploma. - Sarjana Muda. - Sarjana. - PhD. -
+Kelayakan lain. Bagi setiap kelayakan, sediakan institusi, bidang
+pengajian, tahun tamat dan maklumat berkaitan.
+
+E. KEPAKARAN - Kepakaran utama. - Kepakaran kedua. - Kepakaran khusus. -
+Bidang penyelidikan. - Bidang pengajaran. - Pengalaman profesional. -
+Bidang latihan yang boleh dikendalikan. - Kata kunci kepakaran untuk
+carian direktori.
+
+F. KOMPETENSI DIGITAL DAN AI Sediakan kategori yang boleh ditambah atau
+diubah oleh Admin, termasuk: - Generative AI. - AI Governance. - AI
+Ethics and Safety. - Data Analytics. - Data-Driven Decision Making. -
+Digital Leadership. - Digital Transformation. - Educational
+Technology. - Vibe Programming. - Digital Content Development. -
+Cybersecurity Awareness. - Kompetensi digital lain.
+
+G. PENGALAMAN DAN SUMBANGAN - Pengalaman mengajar. - Pengalaman
+pengurusan. - Pengalaman sebagai fasilitator. - Pengalaman sebagai
+penceramah. - Pengalaman sebagai jurulatih. - Pengalaman projek. -
+Pengalaman profesional.
+
+H. PENERBITAN DAN PENYELIDIKAN - Buku. - Artikel jurnal. - Prosiding. -
+Penyelidikan. - Inovasi. - Pengiktirafan. - Pautan penerbitan jika ada.
+
+I. GAMBAR PEGAWAI
+
+J. SIJIL DAN DOKUMEN
+
+Sediakan fungsi Add, Edit, Save, Update, Cancel, Preview Profile dan
+View Profile. Sediakan indikator peratusan kelengkapan profil dan
+paparkan bahagian yang masih belum lengkap.
+
+PAGE 4 — DASHBOARD PUSAT
+
+Khas untuk Ketua Pusat dan Admin yang diberi kuasa.
+
+Paparkan: - Jumlah keseluruhan pegawai. - Jumlah pensyarah. - Jumlah
+bukan pensyarah. - Jumlah jabatan. - Statistik mengikut jawatan. -
+Statistik mengikut gred. - Statistik kelayakan akademik. - Statistik
+kepakaran. - Bilangan pakar AI dan GenAI. - Bilangan pakar teknologi
+digital. - Bilangan pakar kepimpinan pendidikan. - Peratus profil
+lengkap. - Peratus gambar dimuat naik. - Peratus maklumat kepakaran
+lengkap. - Bilangan sijil yang dimuat naik jika dibenarkan.
+
+Visualisasi: - KPI cards. - Bar chart. - Pie chart. - Donut chart. -
+Ranking kepakaran. - Taburan kepakaran mengikut jabatan. - Direktori
+pegawai.
+
+Sediakan carian dan penapis mengikut nama, jabatan, jawatan, gred,
+kelayakan dan kepakaran.
+
+PAGE 5 — DASHBOARD JABATAN
+
+Khas untuk Ketua Jabatan dan pengguna yang diberi kuasa.
+
+Paparkan: - Nama jabatan dan Ketua Jabatan. - Jumlah pegawai. -
+Statistik jawatan dan gred. - Kelayakan akademik. - Kepakaran pegawai. -
+Kompetensi digital dan AI. - Status kelengkapan profil. - Direktori
+pegawai. - Senarai pakar mengikut bidang.
+
+Ketua Jabatan hanya boleh mengakses data jabatan sendiri. Ketua Pusat
+dan Admin boleh melihat data merentas jabatan mengikut kebenaran.
+
+PAGE 6 — ADMIN
+
+Sediakan modul: 1. User Management. 2. Role Management. 3. Organization
+Management. 4. Department Management. 5. Profile Management. 6. Google
+Drive Management. 7. Certificate Management. 8. Photo Management. 9.
+Expertise Category Management. 10. System Settings. 11. Audit Log. 12.
+Data Export. 13. Backup and Recovery. 14. Profile Completion Monitoring.
+
+Admin boleh: - Tambah pengguna. - Edit pengguna. - Aktifkan atau
+nyahaktifkan akaun. - Tetapkan Role ID. - Tetapkan pusat dan jabatan. -
+Semak kelengkapan biodata. - Semak status gambar. - Semak sijil. -
+Melihat sejarah perubahan. - Mengurus kategori kepakaran. - Mengurus
+konfigurasi Drive. - Menjana laporan.
+
+======================================================================
+4. ROLE-BASED ACCESS CONTROL (RBAC)
+======================================================================
+
+Tetapkan lima tahap pengguna:
+
+L1 — Ketua Pusat L2 — Ketua Jabatan L3 — Pensyarah L4 — Bukan Pensyarah
+(Pegawai) L5 — Bukan Pensyarah (Bukan Pegawai)
+
+Admin ialah peranan pentadbiran berasingan daripada lima tahap tersebut.
+
+Hak akses:
+
+KETUA PUSAT (L1) - Melihat semua profil pegawai dalam pusat. - Melihat
+Dashboard Pusat. - Melihat Dashboard Jabatan. - Melihat Direktori
+Kepakaran keseluruhan. - Melihat Analisis Kapasiti Kepakaran. - Tidak
+boleh mengubah profil individu secara senyap. - Sebarang pembetulan
+pentadbiran mesti direkodkan dalam audit log.
+
+KETUA JABATAN (L2) - Melihat profil pegawai jabatan sendiri. - Melihat
+Dashboard Jabatan sendiri. - Melihat kepakaran jabatan sendiri. -
+Mengakses laporan jabatan. - Tidak boleh mengubah profil individu tanpa
+proses dan kebenaran yang ditetapkan.
+
+PENSYARAH (L3) - Melihat dan mengemas kini profil sendiri. - Memuat naik
+gambar dan sijil sendiri. - Melihat direktori atau maklumat lain yang
+dibenarkan.
+
+BUKAN PENSYARAH (PEGAWAI) (L4) - Melihat dan mengemas kini profil
+sendiri. - Memuat naik gambar dan dokumen sendiri. - Akses kepada
+maklumat lain mengikut kebenaran.
+
+BUKAN PENSYARAH (BUKAN PEGAWAI) (L5) - Melihat dan mengemas kini profil
+sendiri mengikut kebenaran. - Akses terhad kepada modul organisasi.
+
+ADMIN - Mengurus pengguna, role, pusat, jabatan, konfigurasi, kategori,
+storan dan sistem. - Admin tidak boleh memberikan role Admin kepada
+dirinya sendiri melalui frontend. - Perubahan role mesti disahkan di
+backend dan direkodkan dalam audit log.
+
+Gunakan RBAC di backend dan Firestore Security Rules. Jangan hanya
+menyembunyikan menu atau butang di frontend. Setiap endpoint mesti
+menyemak Firebase ID Token, status akaun, role, skop pusat/jabatan dan
+pemilikan rekod.
+
+======================================================================
+5. MODUL GAMBAR PEGAWAI
+======================================================================
+
+Bangunkan image upload editor yang berfungsi sepenuhnya.
+
+Pengguna boleh: - Upload JPG, JPEG atau PNG. - Melihat preview. - Crop
+gambar. - Zoom in dan zoom out. - Drag dan reposition gambar. - Align
+kiri, kanan, atas dan bawah. - Menggunakan nisbah paparan 1:1. -
+Menyimpan perubahan. - Menggantikan gambar lama.
+
+Keperluan penyimpanan: - Simpan gambar asal tanpa mengubah kandungan
+asal dalam Google Drive. - Simpan gambar paparan yang telah diproses
+sebagai fail berasingan. - Simpan crop coordinates, zoom dan positioning
+metadata dalam Firestore. - Jangan menimpa gambar asal apabila pengguna
+mengedit crop atau kedudukan. - Hadkan format dan saiz fail mengikut
+konfigurasi Admin. - Berikan mesej ralat jika format tidak disokong atau
+upload gagal.
+
+======================================================================
+6. MODUL SIJIL DAN DOKUMEN
+======================================================================
+
+Kategori: - Sijil Akademik. - Sijil Profesional. - Sijil Kompetensi. -
+Sijil Latihan. - Sijil Pengiktirafan. - Dokumen Lain.
+
+Metadata setiap dokumen: - Staff ID. - Nama sijil. - Kategori. - Tarikh
+sijil jika berkaitan. - Google Drive File ID. - Tarikh muat naik. -
+Uploaded by. - Status dokumen. - Metadata saiz dan jenis fail jika
+diperlukan.
+
+Paparan profil hanya menunjukkan: 1. Nama sijil. 2. Pautan untuk membuka
+sijil.
+
+Jangan embed keseluruhan sijil dalam halaman biodata.
+
+Sediakan upload, view, replace dan delete. Pengguna hanya boleh mengurus
+dokumen sendiri kecuali Admin yang mempunyai kebenaran khusus. Setiap
+operasi mesti direkodkan.
+
+Jangan gunakan pautan public atau Anyone with the link. Gunakan
+authenticated backend endpoint yang menyemak kebenaran sebelum
+memaparkan atau memuat turun dokumen.
+
+======================================================================
+7. GOOGLE DRIVE — PEMILIK STORAN
+======================================================================
+
+Gunakan satu akaun Google individu yang ditetapkan sebagai pemilik
+storan aplikasi.
+
+Struktur folder:
+
+IAB_HUMAN_CAPITAL_SYSTEM/ 01_PROFILE_PHOTOS/ 02_ACADEMIC_CERTIFICATES/
+03_PROFESSIONAL_CERTIFICATES/ 04_COMPETENCY_CERTIFICATES/
+05_TRAINING_CERTIFICATES/ 06_PUBLICATIONS/ 07_GENERATED_PROFILES/
+
+Gunakan Staff ID unik sebagai folder atau pengenal folder pegawai.
+Jangan gunakan nombor kad pengenalan sebagai nama folder.
+
+Google Drive OAuth: - Gunakan OAuth 2.0 Authorization Code Flow. -
+Gunakan offline access untuk backend apabila diperlukan. - Gunakan
+least-privilege scope, bermula dengan drive.file jika memenuhi keperluan
+sebenar. - Nilai scope dan keperluan folder perlu diuji. Jangan menaik
+taraf scope tanpa justifikasi. - Simpan refresh token secara encrypted
+di backend atau Google Secret Manager. - Jangan dedahkan client secret,
+access token atau refresh token dalam frontend. - Sediakan reconnect
+apabila kebenaran dibatalkan. - Sediakan status sambungan dan ujian
+sambungan. - Sediakan pemulihan apabila token tamat atau ditarik balik.
+
+PENTING: Jika aplikasi perlu mengurus folder sedia ada atau fail yang
+tidak dicipta oleh aplikasi, sahkan terlebih dahulu sama ada drive.file
+mencukupi. Pilih scope paling minimum yang benar-benar menyokong reka
+bentuk tersebut.
+
+Gunakan resumable upload bagi fail besar atau sambungan tidak stabil.
+
+Pastikan operasi upload dan simpan metadata mempunyai pengendalian
+kegagalan. Jika fail berjaya dimuat naik tetapi Firestore gagal
+menyimpan metadata, rekodkan keadaan tersebut dan sediakan proses
+reconciliation atau cleanup supaya tidak berlaku fail yatim.
+
+Jangan mendakwa upload berjaya sebelum Google Drive mengesahkan
+penciptaan fail dan metadata Firestore berjaya disimpan.
+
+======================================================================
+8. MODUL 7 — DIREKTORI KEPAKARAN ORGANISASI
+======================================================================
+
+Bangunkan direktori kepakaran untuk mencari tenaga pakar IAB.
+
+Carian berdasarkan: - Nama. - Jabatan. - Kepakaran utama. - Kepakaran
+khusus. - Bidang penyelidikan. - Kompetensi profesional. - Kompetensi AI
+dan digital. - Pengalaman fasilitator. - Pengalaman penceramah. -
+Pengalaman jurulatih.
+
+Paparkan kad profil: - Gambar. - Nama. - Jawatan. - Jabatan. - Kepakaran
+utama. - Pengalaman berkaitan.
+
+Sediakan carian berbilang kriteria dan filter. Gunakan tag atau kategori
+kepakaran yang dikawal Admin supaya istilah seragam dan analisis tidak
+terpecah akibat ejaan berbeza.
+
+Ketua Pusat boleh melihat direktori keseluruhan. Ketua Jabatan melihat
+jabatan sendiri. Pengguna lain mengikut kebenaran yang ditetapkan.
+
+======================================================================
+9. MODUL 8 — PENJANAAN PROFIL PROFESIONAL PDF
+======================================================================
+
+Sediakan penjanaan profil profesional secara automatik berdasarkan data
+sebenar dalam Firestore.
+
+Pilihan:
+
+A. PROFIL RINGKAS - Gambar. - Nama dan jawatan. - Jabatan. - Kelayakan
+akademik tertinggi. - Kepakaran utama. - Pengalaman profesional.
+
+B. PROFIL LENGKAP - Biodata. - Maklumat perkhidmatan. - Kelayakan
+akademik. - Kepakaran. - Kompetensi digital dan AI. - Pengalaman. -
+Penerbitan. - Sumbangan profesional. - Senarai sijil berserta pautan.
+
+Keperluan: - Reka bentuk profesional dan sesuai untuk kegunaan rasmi
+IAB. - Preview sebelum jana PDF. - Jangan mereka atau menambah maklumat
+yang tiada dalam rekod. - Benarkan pengguna menyemak profil sebelum
+menjana. - Simpan PDF yang dijana dalam folder 07_GENERATED_PROFILES
+jika fungsi storan diaktifkan. - Rekodkan tarikh, pengguna dan versi
+data yang digunakan. - Kawal akses kepada PDF yang mengandungi maklumat
+peribadi.
+
+======================================================================
+10. MODUL 9 — ANALISIS KAPASITI KEPAKARAN ORGANISASI
+======================================================================
+
+Bangunkan dashboard analitik untuk membantu pengurusan memahami kapasiti
+kepakaran.
+
+Analisis: - Taburan kepakaran mengikut jabatan. - Taburan kelayakan
+akademik. - Bilangan pakar mengikut kategori. - Kompetensi AI dan
+GenAI. - Kompetensi teknologi digital. - Bidang penyelidikan. -
+Pengalaman profesional. - Taburan tenaga pengajar. - Bidang kepakaran
+yang mempunyai kekurangan tenaga pakar. - Peratus profil dan kompetensi
+yang belum lengkap.
+
+Visualisasi: - KPI Cards. - Bar Charts. - Pie Charts. - Donut Charts. -
+Heatmap kepakaran mengikut jabatan. - Ranking bidang kepakaran. - Jadual
+analisis jurang kepakaran.
+
+Sediakan filter mengikut jabatan, bidang dan kategori.
+
+PENTING: - Paparkan bilangan sebenar berdasarkan rekod database. -
+Bezakan data belum diisi daripada nilai sifar. - Jangan membuat
+kesimpulan kekurangan pakar jika data profil belum lengkap. - Nyatakan
+denominator dan kaedah pengiraan. - Paparkan tarikh data dikemas kini. -
+Analisis ialah sokongan keputusan, bukan penilaian prestasi automatik
+pegawai. - Jangan menghasilkan ranking individu yang tidak mempunyai
+asas atau kelulusan organisasi.
+
+======================================================================
+11. DATABASE FIRESTORE
+======================================================================
+
+Gunakan collections berikut:
+
+1.  users
+2.  staff_profiles
+3.  organizations
+4.  departments
+5.  qualifications
+6.  expertise
+7.  competencies
+8.  publications
+9.  certificates
+10. profile_photos
+11. drive_settings
+12. audit_logs
+13. generated_profiles
+14. system_settings
+
+Setiap rekod yang berkaitan perlu mempunyai: - id atau document ID
+unik. - createdAt. - updatedAt. - createdBy. - updatedBy. - status jika
+berkaitan.
+
+Gunakan Firebase UID sebagai pengenal akaun. Gunakan Staff ID sebagai
+pengenal rekod pegawai yang stabil dan tidak sensitif.
+
+Jangan simpan keseluruhan gambar atau PDF dalam Firestore. Simpan
+metadata, Drive File ID dan maklumat yang diperlukan sahaja.
+
+Pastikan struktur menyokong hubungan pegawai, pusat, jabatan, kepakaran,
+sijil dan penerbitan. Elakkan pendua rekod dan sediakan validasi input.
+
+======================================================================
+12. BACKEND API
+======================================================================
+
+Gunakan Firebase Cloud Functions atau Cloud Run.
+
+Cadangan endpoint:
+
+AUTHENTICATION - GET /api/auth/profile - POST /api/auth/link-provider -
+POST /api/auth/logout jika diperlukan oleh seni bina
+
+GOOGLE DRIVE - GET /api/drive/status - GET /api/drive/connect - GET
+/api/drive/callback - POST /api/drive/reconnect - POST
+/api/drive/upload - GET /api/drive/file/:id - POST
+/api/drive/replace/:id - DELETE /api/drive/file/:id
+
+PROFILE - GET /api/profile/:staffId - PUT /api/profile/:staffId - POST
+/api/profile/photo - POST /api/profile/pdf
+
+ADMIN - GET /api/admin/users - POST /api/admin/users - PUT
+/api/admin/users/:uid - PUT /api/admin/users/:uid/role - GET
+/api/admin/audit-logs
+
+Nama endpoint ialah cadangan seni bina. Sesuaikan dengan framework dan
+amalan keselamatan yang dipilih.
+
+Setiap endpoint yang dilindungi mesti: - Mengesahkan Firebase ID
+Token. - Menyemak status akaun. - Menyemak role. - Menyemak skop
+pusat/jabatan. - Menyemak pemilikan rekod. - Mengesahkan input. -
+Merekodkan operasi sensitif dalam audit log.
+
+Gunakan HTTPS. Hadkan kadar permintaan untuk endpoint sensitif. Jangan
+log password, token atau kandungan dokumen.
+
+======================================================================
+13. ADMIN — GOOGLE DRIVE INTEGRATION PANEL
+======================================================================
+
+Paparkan: - Connected / Disconnected. - Connected account email. - OAuth
+authorization status. - Last successful connection. - Root folder ID. -
+Number of uploaded documents. - Number of uploaded photos. - Last
+successful upload. - Reconnect button. - Test connection button.
+
+Jangan paparkan secret token.
+
+Sediakan fungsi semakan folder dan kebenaran. Paparkan mesej yang jelas
+jika Drive belum dikonfigurasikan.
+
+======================================================================
+14. AUDIT LOG DAN PEMANTAUAN
+======================================================================
+
+Rekod: - Login dan logout. - Kemaskini biodata. - Kemaskini kepakaran. -
+Upload sijil. - Replace sijil. - Delete sijil. - Upload gambar. -
+Replace gambar. - Perubahan role. - Pengaktifan dan penyahaktifan
+akaun. - Perubahan konfigurasi. - Akses atau muat turun dokumen sensitif
+jika sesuai.
+
+Setiap rekod audit mengandungi: - Actor UID. - Staff ID jika
+berkaitan. - Jenis aktiviti. - Rekod atau objek yang terlibat. -
+Timestamp server. - Keputusan berjaya/gagal. - Maklumat konteks minimum
+yang diperlukan.
+
+Audit log tidak boleh diubah atau dipadam oleh pengguna biasa. Hadkan
+akses Admin dan pertimbangkan penyimpanan log keselamatan berasingan
+untuk operasi berisiko tinggi.
+
+======================================================================
+15. UI/UX DESIGN
+======================================================================
+
+Gunakan gaya: - Premium Corporate Government Dashboard. - Navy blue,
+putih dan gold sebagai warna aksen. - Susun atur moden dan kemas. -
+Sidebar navigation. - Top navigation. - KPI Cards. - Jadual
+profesional. - Search dan filter. - Responsive desktop, tablet dan
+mobile. - Bahasa Melayu sebagai bahasa utama.
+
+Gunakan istilah yang konsisten: - Profil Pegawai. - Direktori
+Kepakaran. - Dashboard Pusat. - Dashboard Jabatan. - Analisis Kapasiti
+Kepakaran. - Profil Profesional. - Pentadbiran Sistem.
+
+Pastikan navigasi jelas dan setiap role hanya melihat menu yang
+dibenarkan. Namun, sekatan sebenar mesti dilaksanakan di backend, bukan
+sekadar UI.
+
+======================================================================
+16. KESELAMATAN, PRIVASI DAN TADBIR URUS DATA
+======================================================================
+
+Laksanakan: - Firebase Authentication. - Firebase ID Token
+verification. - RBAC di backend. - Firestore Security Rules. - Google
+Drive private storage. - OAuth token encryption. - Secret Manager. - MFA
+untuk pemilik storan dan Admin. - Input validation. - File type and size
+validation. - Rate limiting. - Audit logging. - Backup and recovery. -
+Session management. - Secure error handling.
+
+Maklumat peribadi seperti nombor kad pengenalan, nombor telefon dan
+dokumen kelayakan perlu dikawal mengikut prinsip minimisasi data dan
+akses berdasarkan keperluan tugas.
+
+Semak pematuhan kepada dasar keselamatan ICT kerajaan dan keperluan
+perlindungan data yang terpakai sebelum penggunaan rasmi. Jangan
+menganggap aplikasi ini telah mendapat kelulusan organisasi hanya kerana
+ujian teknikal berjaya.
+
+Sediakan prosedur: - Akaun pegawai bertukar jabatan. - Pegawai
+meninggalkan organisasi. - Akaun digantung. - Pemilik Google Drive
+bertukar. - OAuth permission ditarik balik. - Pemulihan data. -
+Penghapusan data mengikut dasar penyimpanan organisasi.
+
+======================================================================
+17. DATA CONTOH DAN UJIAN
+======================================================================
+
+Sediakan data dummy untuk pembangunan dan pengujian sahaja.
+
+Jangan campurkan data dummy dengan data produksi.
+
+Uji sekurang-kurangnya: - Satu Ketua Pusat. - Tiga Ketua Jabatan. -
+Beberapa Pensyarah. - Pengguna Bukan Pensyarah (Pegawai). - Pengguna
+Bukan Pensyarah (Bukan Pegawai). - Seorang Admin.
+
+Uji: 1. Login Google. 2. Login emel dan kata laluan. 3. Account linking.
+4. Role access. 5. Profile update. 6. Upload gambar asal. 7. Crop dan
+positioning. 8. Upload sijil. 9. Paparan nama sijil dan secure link. 10.
+Google Drive file creation. 11. Firestore metadata creation. 12.
+Dashboard filtering. 13. Direktori kepakaran. 14. PDF generation. 15.
+Audit log. 16. Unauthorized access. 17. Drive token expiry dan
+reconnect. 18. Upload failure dan recovery. 19. Pegawai bertukar
+jabatan. 20. Admin deactivation.
+
+Sediakan ujian negatif untuk memastikan pengguna tidak boleh mengakses
+profil, sijil atau fungsi yang bukan dalam skop kebenarannya.
+
+======================================================================
+18. PELAN PEMBANGUNAN BERFASA
+======================================================================
+
+FASA 1 — FOUNDATION - Setup React dan TypeScript. - Setup Firebase. -
+Setup Firestore. - Setup Authentication. - Setup Role Management. -
+Setup organisasi dan jabatan. - Setup Security Rules.
+
+FASA 2 — PROFILE MANAGEMENT - Welcome Page. - Login Page. - Maklumat
+Pegawai. - Borang biodata. - Kelayakan akademik. - Kepakaran. -
+Kompetensi. - Penerbitan. - Profile completion indicator.
+
+FASA 3 — GOOGLE DRIVE - Google Cloud project. - Enable Drive API. -
+OAuth consent configuration. - OAuth callback. - Token encryption. -
+Folder creation. - Photo upload. - Photo editor. - Certificate upload. -
+Secure document viewing. - Error recovery.
+
+FASA 4 — DASHBOARDS - Dashboard Pusat. - Dashboard Jabatan. - KPI. -
+Charts. - Search. - Filters. - Export.
+
+FASA 5 — STRATEGIC MODULES - Direktori Kepakaran. - Penjanaan Profil
+Profesional PDF. - Analisis Kapasiti Kepakaran. - Analisis jurang
+kepakaran.
+
+FASA 6 — ADMIN - User Management. - Role Management. - Organization
+Management. - Drive Management. - Audit Log. - Data Export. - Backup and
+Recovery.
+
+FASA 7 — TESTING AND DEPLOYMENT - Functional testing. - Security
+testing. - Permission testing. - Integration testing. - Performance
+testing. - User acceptance testing. - Deployment. - Documentation. -
+Operational handover.
+
+======================================================================
+19. KRITERIA PENERIMAAN SISTEM
+======================================================================
+
+Sistem hanya dianggap bersedia untuk UAT apabila:
+
+A. AUTHENTICATION - Google Sign-In berfungsi. - Email/Password
+berfungsi. - Account linking diuji. - Akaun tidak diluluskan tidak boleh
+mengakses data.
+
+B. PROFILE - Pengguna boleh mengemas kini profil sendiri. - Pengguna
+tidak boleh mengubah profil orang lain. - Data kekal selepas logout dan
+login semula.
+
+C. PHOTO - Gambar asal disimpan dalam Google Drive. - Gambar paparan
+disimpan berasingan. - Crop dan positioning berfungsi. - Gambar asal
+tidak berubah.
+
+D. CERTIFICATE - Sijil sebenar berjaya disimpan dalam Drive. - Nama
+sijil dipaparkan. - Pautan hanya boleh digunakan oleh pengguna yang
+dibenarkan. - Fail tidak didedahkan secara public.
+
+E. DASHBOARD - Statistik berasal daripada Firestore. - Filter
+berfungsi. - Nilai kosong tidak dianggap sebagai sifar. - Skop data
+mengikut role.
+
+F. STRATEGIC MODULES - Direktori kepakaran boleh mencari data sebenar. -
+PDF dijana berdasarkan profil sebenar. - Analisis kapasiti menggunakan
+kaedah pengiraan yang jelas.
+
+G. SECURITY - Backend mengesahkan Firebase ID Token. - RBAC diuji. -
+Security Rules diuji. - Audit log merekodkan aktiviti sensitif. - Secret
+tidak terdedah dalam frontend.
+
+H. DEPLOYMENT - Aplikasi boleh diakses melalui URL deployment. - Backend
+aktif. - Environment variables dan secrets dikonfigurasikan. - Backup
+dan recovery didokumenkan.
+
+======================================================================
+20. ARAHAN KERJA KEPADA AI CODING AGENT
+======================================================================
+
+Bina aplikasi secara berperingkat dan teruskan pembangunan sehingga
+setiap modul berfungsi.
+
+Arahan wajib:
+
+1.  Mulakan dengan memeriksa struktur projek sedia ada.
+2.  Jika projek belum wujud, bina struktur asas yang sesuai.
+3.  Sediakan seni bina dan database schema sebelum membina semua UI.
+4.  Bangunkan modul secara modular.
+5.  Kekalkan fungsi yang telah siap apabila menambah modul baharu.
+6.  Jangan menggantikan integrasi sebenar dengan mock data.
+7.  Jika konfigurasi Firebase atau Google Cloud belum diberikan,
+    sediakan kod integrasi dan senarai konfigurasi yang diperlukan.
+    Nyatakan dengan jelas bahawa integrasi belum aktif.
+8.  Jangan mereka API key, OAuth Client ID, Client Secret, Firebase
+    configuration atau Drive Folder ID.
+9.  Jangan mendedahkan credentials dalam frontend atau GitHub.
+10. Jangan mendakwa sesuatu fungsi berjaya sebelum ujian sebenar.
+11. Sediakan loading, empty, success dan error states.
+12. Sediakan validasi borang dan mesej ralat yang mudah difahami.
+13. Gunakan TypeScript types dan validasi data.
+14. Sediakan README dan dokumentasi deployment.
+15. Jalankan ujian selepas setiap fasa.
+16. Laporkan komponen yang siap, belum siap, memerlukan konfigurasi dan
+    gagal diuji.
+17. Jangan berhenti selepas menghasilkan halaman visual. Teruskan dengan
+    database, backend, authentication dan integrasi sebenar.
+18. Jika terdapat keputusan teknikal yang memerlukan credential atau
+    kelulusan pemilik sistem, berhenti pada titik tersebut dan minta
+    konfigurasi yang diperlukan. Jangan membuat andaian atau menggunakan
+    credential palsu.
+
+Mulakan sekarang dengan: A. Menyemak atau membina struktur projek. B.
+Menyediakan seni bina teknikal. C. Membina Firebase Authentication dan
+Role-Based Access Control. D. Membina Firestore schema. E. Membina PAGE
+1, PAGE 2 dan PAGE 3. F. Menyediakan integrasi Google Drive backend. G.
+Meneruskan fasa seterusnya mengikut pelan pembangunan.
+
+HASIL AKHIR: Sebuah Sistem Pengurusan Modal Insan dan Kepakaran IAB yang
+selamat, berfungsi, responsif, boleh dikembangkan dan menggunakan data
+sebenar untuk menyokong pengurusan biodata, kepakaran, kompetensi serta
+perancangan kapasiti organisasi.

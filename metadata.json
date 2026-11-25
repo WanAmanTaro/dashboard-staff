@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Pengurusan Modal Insan dan Kepakaran IAB",
+  "description": "Platform digital berpusat Institut Aminuddin Baki untuk pengurusan biodata pegawai, kelayakan akademik, kepakaran, kompetensi digital dan AI, sijil Google Drive, direktori kepakaran serta analitik kapasiti organisasi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
