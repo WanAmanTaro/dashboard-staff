@@ -30,6 +30,7 @@ import {
   DEFAULT_KNOWLEDGE_SKILL_CATEGORIES,
   IAB_CERT_SHORT_CODES,
   QUALIFICATION_LEVEL_RANK,
+  computePercentage,
   isCountableStaff,
 } from '../lib/constants';
 import { getGenderMapForProfiles } from '../services/firestoreService';
@@ -196,13 +197,19 @@ function buildDepartmentScopeMetrics(params: {
   const gCa = computeGenderBreakdown(caStaff, genderMap);
   const gComp = computeGenderBreakdown(completeStaff, genderMap);
 
+  const fmtGender = (g: GenderBreakdown, prefix = '') =>
+    `${prefix}L: ${g.male} (${computePercentage(g.male, g.total)}%) | P: ${g.female} (${computePercentage(g.female, g.total)}%)`;
+
+  const fmtRatio = (matchedCount: number) =>
+    `${matchedCount} / ${totalCount} (${computePercentage(matchedCount, totalCount)}%)`;
+
   return [
     {
       id: `${scopeKey}-pegawai`,
       numberLabel: '1.',
       title: 'Bil. Pegawai',
       displayValue: String(gAll.total),
-      genderText: `L: ${gAll.male} | P: ${gAll.female}`,
+      genderText: fmtGender(gAll),
       mode: 'staff_count',
       matchedProfiles: scopeProfiles,
       scopeProfiles,
@@ -211,8 +218,8 @@ function buildDepartmentScopeMetrics(params: {
       id: `${scopeKey}-pensyarah`,
       numberLabel: '2.',
       title: 'Bil. Pensyarah',
-      displayValue: String(gLec.total),
-      genderText: `L: ${gLec.male} | P: ${gLec.female}`,
+      displayValue: fmtRatio(gLec.total),
+      genderText: fmtGender(gLec),
       mode: 'staff_count',
       matchedProfiles: lecturers,
       scopeProfiles,
@@ -221,8 +228,8 @@ function buildDepartmentScopeMetrics(params: {
       id: `${scopeKey}-bukan-pensyarah`,
       numberLabel: '3.',
       title: 'Bil. Bukan Pensyarah',
-      displayValue: String(gNonLec.total),
-      genderText: `L: ${gNonLec.male} | P: ${gNonLec.female}`,
+      displayValue: fmtRatio(gNonLec.total),
+      genderText: fmtGender(gNonLec),
       mode: 'staff_count',
       matchedProfiles: nonLecturers,
       scopeProfiles,
@@ -232,8 +239,8 @@ function buildDepartmentScopeMetrics(params: {
       numberLabel: '4.',
       title: 'Bil. Ada CC',
       subtitle: 'Certified Coach (CC)',
-      displayValue: `${gCc.total} / ${totalCount}`,
-      genderText: `L: ${gCc.male} | P: ${gCc.female}`,
+      displayValue: fmtRatio(gCc.total),
+      genderText: fmtGender(gCc),
       mode: 'ratio_with_status',
       matchedProfiles: ccStaff,
       scopeProfiles,
@@ -244,8 +251,8 @@ function buildDepartmentScopeMetrics(params: {
       numberLabel: '5.',
       title: 'Bil. Ada CT',
       subtitle: 'Certified Trainer (CT)',
-      displayValue: `${gCt.total} / ${totalCount}`,
-      genderText: `L: ${gCt.male} | P: ${gCt.female}`,
+      displayValue: fmtRatio(gCt.total),
+      genderText: fmtGender(gCt),
       mode: 'ratio_with_status',
       matchedProfiles: ctStaff,
       scopeProfiles,
@@ -256,8 +263,8 @@ function buildDepartmentScopeMetrics(params: {
       numberLabel: '6.',
       title: 'Bil. Ada CMC',
       subtitle: 'Certified Master Coach (CMC)',
-      displayValue: `${gCmc.total} / ${totalCount}`,
-      genderText: `L: ${gCmc.male} | P: ${gCmc.female}`,
+      displayValue: fmtRatio(gCmc.total),
+      genderText: fmtGender(gCmc),
       mode: 'ratio_with_status',
       matchedProfiles: cmcStaff,
       scopeProfiles,
@@ -268,8 +275,8 @@ function buildDepartmentScopeMetrics(params: {
       numberLabel: '7.',
       title: 'Bil. Ada CMT',
       subtitle: 'Certified Master Trainer (CMT)',
-      displayValue: `${gCmt.total} / ${totalCount}`,
-      genderText: `L: ${gCmt.male} | P: ${gCmt.female}`,
+      displayValue: fmtRatio(gCmt.total),
+      genderText: fmtGender(gCmt),
       mode: 'ratio_with_status',
       matchedProfiles: cmtStaff,
       scopeProfiles,
@@ -280,8 +287,8 @@ function buildDepartmentScopeMetrics(params: {
       numberLabel: '8.',
       title: 'Bil. Ada CA',
       subtitle: 'Certified Accessor',
-      displayValue: `${gCa.total} / ${totalCount}`,
-      genderText: `L: ${gCa.male} | P: ${gCa.female}`,
+      displayValue: fmtRatio(gCa.total),
+      genderText: fmtGender(gCa),
       mode: 'ratio_with_status',
       matchedProfiles: caStaff,
       scopeProfiles,
@@ -292,8 +299,8 @@ function buildDepartmentScopeMetrics(params: {
       numberLabel: '9.',
       title: 'Status Pengisian Profil',
       subtitle: 'Profil Pegawai & Kompetensi IAB',
-      displayValue: `${gComp.total} / ${totalCount}`,
-      genderText: `Lengkap L: ${gComp.male} | P: ${gComp.female}`,
+      displayValue: fmtRatio(gComp.total),
+      genderText: fmtGender(gComp, 'Lengkap '),
       mode: 'ratio_with_status',
       matchedProfiles: completeStaff,
       scopeProfiles,
@@ -434,8 +441,8 @@ export const CenterDashboardPage: React.FC<CenterDashboardPageProps> = ({
         numberLabel: `${10 + idx}.`,
         title: `Status Pengisian Profil ${dept.name}`,
         subtitle: 'Profil Pegawai & Kompetensi IAB',
-        displayValue: `${deptComplete.length} / ${deptStaff.length}`,
-        genderText: `Lengkap L: ${gComp.male} | P: ${gComp.female}`,
+        displayValue: `${deptComplete.length} / ${deptStaff.length} (${computePercentage(deptComplete.length, deptStaff.length)}%)`,
+        genderText: `Lengkap L: ${gComp.male} (${computePercentage(gComp.male, gComp.total)}%) | P: ${gComp.female} (${computePercentage(gComp.female, gComp.total)}%)`,
         mode: 'ratio_with_status',
         matchedProfiles: deptComplete,
         scopeProfiles: deptStaff,
@@ -454,8 +461,8 @@ export const CenterDashboardPage: React.FC<CenterDashboardPageProps> = ({
         numberLabel: `${10 + centerDepts.length}.`,
         title: 'Status Pengisian Profil Jabatan Belum Ditetapkan',
         subtitle: 'Profil Pegawai & Kompetensi IAB',
-        displayValue: `${unassignedComplete.length} / ${unassignedStaff.length}`,
-        genderText: `Lengkap L: ${gComp.male} | P: ${gComp.female}`,
+        displayValue: `${unassignedComplete.length} / ${unassignedStaff.length} (${computePercentage(unassignedComplete.length, unassignedStaff.length)}%)`,
+        genderText: `Lengkap L: ${gComp.male} (${computePercentage(gComp.male, gComp.total)}%) | P: ${gComp.female} (${computePercentage(gComp.female, gComp.total)}%)`,
         mode: 'ratio_with_status',
         matchedProfiles: unassignedComplete,
         scopeProfiles: unassignedStaff,
@@ -1007,9 +1014,9 @@ export const CenterDashboardPage: React.FC<CenterDashboardPageProps> = ({
                         </p>
                       </div>
                       <p className="text-xs font-medium text-slate-600 font-mono-tabular">
-                        Pegawai: {block.staffCount} (L: {block.genderSummary.male} | P:{' '}
-                        {block.genderSummary.female}) · Profil & IAB Lengkap: {block.completeCount}/
-                        {block.staffCount}
+                        Pegawai: {block.staffCount} (L: {block.genderSummary.male} ({computePercentage(block.genderSummary.male, block.staffCount)}%) | P:{' '}
+                        {block.genderSummary.female} ({computePercentage(block.genderSummary.female, block.staffCount)}%)) · Profil & IAB Lengkap: {block.completeCount}/
+                        {block.staffCount} ({computePercentage(block.completeCount, block.staffCount)}%)
                       </p>
                     </div>
                     {renderMetricGrid(block.metrics, block.dept.name)}
@@ -1542,10 +1549,10 @@ export const CenterDashboardPage: React.FC<CenterDashboardPageProps> = ({
                             {b.dept.headName?.trim() || 'TIADA MAKLUMAT'}
                           </td>
                           <td className="py-2.5 px-3 font-mono-tabular text-slate-700">
-                            {b.staffCount} (L: {b.genderSummary.male} | P: {b.genderSummary.female})
+                            {b.staffCount} (L: {b.genderSummary.male} ({computePercentage(b.genderSummary.male, b.staffCount)}%) | P: {b.genderSummary.female} ({computePercentage(b.genderSummary.female, b.staffCount)}%))
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono-tabular font-semibold text-[#0B1F3B]">
-                            {b.completeCount} / {b.staffCount}
+                            {b.completeCount} / {b.staffCount} ({computePercentage(b.completeCount, b.staffCount)}%)
                           </td>
                         </tr>
                       ))}

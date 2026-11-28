@@ -13,6 +13,8 @@ export type PublicationType =
   | 'Buku'
   | 'Artikel Jurnal'
   | 'Prosiding'
+  | 'Modul'
+  | 'Sumber Rujukan'
   | 'Penyelidikan'
   | 'Inovasi'
   | 'Pengiktirafan';
@@ -402,11 +404,96 @@ export interface SystemSetting {
   updatedBy: string;
 }
 
+export interface TrainingRecord {
+  id: string;
+  moduleName: string;
+  role: string;
+  year: string;
+}
+
+export interface ProgramManagementRecord {
+  id: string;
+  programName: string;
+  centerId: string;
+  centerName: string;
+  departmentId: string;
+  departmentName: string;
+  role: string;
+  year: string;
+}
+
+export interface ConsultationRecord {
+  id: string;
+  title: string;
+  organization: string;
+  consultationType: string;
+  role: string;
+  year: string;
+  impact: string;
+}
+
+export interface NpqelSupervisionRecord {
+  id: string;
+  participantName: string;
+  participantClass: string;
+  year: string;
+}
+
+export interface ProgramEvaluationRecord {
+  id: string;
+  programName: string;
+  centerId: string;
+  centerName: string;
+  departmentId: string;
+  departmentName: string;
+  role: string;
+  year: string;
+  score: number;
+}
+
+export interface ThinkTankRecord {
+  id: string;
+  committeeName: string;
+  level: string;
+  role: string;
+  focusArea: string;
+  year: string;
+  activeStatus: 'Aktif' | 'Tamat';
+}
+
+export interface StaffFunctionsRecord {
+  id: string;
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  trainings: TrainingRecord[];
+  programManagements: ProgramManagementRecord[];
+  consultations: ConsultationRecord[];
+  npqelSupervisions: NpqelSupervisionRecord[];
+  programEvaluations: ProgramEvaluationRecord[];
+  thinkTankEntries: ThinkTankRecord[];
+  status: 'active' | 'draft';
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  createdBy: string;
+  updatedBy: string;
+}
+
 export type AppRoute =
   | 'welcome'
   | 'login'
   | 'profile'
+  | 'academic-qualifications'
+  | 'teaching-experience'
+  | 'fungsi-latihan'
+  | 'fungsi-konsultasi'
+  | 'fungsi-penyelidikan'
+  | 'fungsi-penerbitan'
+  | 'fungsi-pentaksiran'
+  | 'fungsi-pemikir'
   | 'kompetensi-iab'
+  | 'digital-competencies'
   | 'center-dashboard'
   | 'department-dashboard'
   | 'expertise-directory'

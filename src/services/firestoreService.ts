@@ -27,6 +27,7 @@ import {
   IAB_CERT_DEFINITIONS,
   IAB_MODULE_CONTRIBUTIONS,
   computeProfileCompletion,
+  computeYearsOfService,
   getHighestQualificationFromList,
   normalizeGenderShort,
 } from '../lib/constants';
@@ -36,6 +37,7 @@ import type {
   Certificate,
   CompetencyItem,
   CompetencyRecord,
+  ConsultationRecord,
   Department,
   DriveSetting,
   ExpertiseRecord,
@@ -43,13 +45,19 @@ import type {
   IabCertItem,
   IabCompetencyRecord,
   IabModuleContribution,
+  NpqelSupervisionRecord,
   OrganizationCenter,
   ProfilePhoto,
+  ProgramEvaluationRecord,
+  ProgramManagementRecord,
   Publication,
   Qualification,
+  StaffFunctionsRecord,
   StaffPrivatePII,
   StaffProfile,
   SystemSetting,
+  ThinkTankRecord,
+  TrainingRecord,
   UserAccount,
   UserInvitation,
   UserRole,
@@ -238,103 +246,6 @@ export async function ensureInitialSystemDefaults(adminUid: string): Promise<voi
         createdBy: adminUid,
         updatedBy: adminUid,
       });
-    }
-
-    const orgsSnap = await getDocs(collection(db, 'organizations'));
-    if (orgsSnap.empty) {
-      const batch = writeBatch(db);
-      const centers = [
-        {
-          id: 'CTR-IAB-INDUK',
-          code: 'IAB-INDUK',
-          name: 'Pusat Pengurusan dan Kepimpinan Pendidikan',
-          headName: 'Dr. Haji Ahmad Fauzi bin Ismail',
-          headUid: '',
-          location: 'Bandar Enstek, Nilai',
-        },
-        {
-          id: 'CTR-TEKNOLOGI-AI',
-          code: 'IAB-TEKA',
-          name: 'Pusat Pembangunan Teknologi Pendidikan dan AI',
-          headName: 'Dr. Nurul Huda binti Razak',
-          headUid: '',
-          location: 'Bandar Enstek, Nilai',
-        },
-        {
-          id: 'CTR-DASAR-PENYELIDIKAN',
-          code: 'IAB-DASAR',
-          name: 'Pusat Dasar, Penyelidikan dan Inovasi Pendidikan',
-          headName: 'Prof. Madya Dr. Azman bin Khalid',
-          headUid: '',
-          location: 'Bandar Enstek, Nilai',
-        },
-      ];
-      for (const c of centers) {
-        batch.set(doc(db, 'organizations', c.id), {
-          ...c,
-          status: 'active',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          createdBy: adminUid,
-          updatedBy: adminUid,
-        });
-      }
-      await batch.commit();
-
-      const deptBatch = writeBatch(db);
-      const depts = [
-        {
-          id: 'DEPT-KEPIMPINAN',
-          centerId: 'CTR-IAB-INDUK',
-          code: 'JKP',
-          name: 'Jabatan Kepimpinan Pendidikan',
-          headName: 'Dr. Siti Mariam binti Salleh',
-          headUid: '',
-        },
-        {
-          id: 'DEPT-PENGURUSAN-ORG',
-          centerId: 'CTR-IAB-INDUK',
-          code: 'JPO',
-          name: 'Jabatan Pengurusan Organisasi dan Bakat',
-          headName: 'En. Mohd Hafiz bin Mansor',
-          headUid: '',
-        },
-        {
-          id: 'DEPT-AI-GENAI',
-          centerId: 'CTR-TEKNOLOGI-AI',
-          code: 'JAI',
-          name: 'Jabatan Kecerdasan Buatan dan Analitik Data',
-          headName: 'Ts. Dr. Faridah binti Yusof',
-          headUid: '',
-        },
-        {
-          id: 'DEPT-EDTECH',
-          centerId: 'CTR-TEKNOLOGI-AI',
-          code: 'JET',
-          name: 'Jabatan Teknologi Pendidikan Digital',
-          headName: 'En. Wan Azri bin Wan Sulaiman',
-          headUid: '',
-        },
-        {
-          id: 'DEPT-PENYELIDIKAN',
-          centerId: 'CTR-DASAR-PENYELIDIKAN',
-          code: 'JPP',
-          name: 'Jabatan Penyelidikan dan Pembangunan Dasar',
-          headName: 'Dr. Noraini binti Harun',
-          headUid: '',
-        },
-      ];
-      for (const d of depts) {
-        deptBatch.set(doc(db, 'departments', d.id), {
-          ...d,
-          status: 'active',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          createdBy: adminUid,
-          updatedBy: adminUid,
-        });
-      }
-      await deptBatch.commit();
     }
   } catch (err) {
     console.warn('Initial system defaults note:', err);
@@ -995,7 +906,9 @@ export async function saveFullStaffProfile(params: {
       altContact: String(params.pii.altContact || '').trim().slice(0, 160),
       appointmentDate: String(params.pii.appointmentDate || '').trim().slice(0, 32),
       serviceStatus: String(params.pii.serviceStatus || '').trim().slice(0, 60),
-      yearsOfService: Math.max(0, Math.min(80, Math.round(Number(params.pii.yearsOfService) || 0))),
+      yearsOfService: String(params.pii.appointmentDate || '').trim()
+        ? computeYearsOfService(params.pii.appointmentDate)
+        : Math.max(0, Math.min(80, Math.round(Number(params.pii.yearsOfService) || 0))),
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     };
@@ -1939,282 +1852,351 @@ export async function getGenderMapForProfiles(
 }
 
 // =========================================================
-// EXPLICIT ADMIN-TRIGGERED UAT TEST DATASET SEEDER
+// STANDALONE EXPERTISE & TEACHING EXPERIENCE SAVE
 // =========================================================
-export async function seedUatTestRecords(adminUid: string): Promise<number> {
-  await ensureInitialSystemDefaults(adminUid);
+export async function saveStaffExpertise(params: {
+  expertise: Omit<ExpertiseRecord, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>;
+  completion?: { completionPercent: number; missingSections: string[] };
+}): Promise<ExpertiseRecord> {
+  const actorUid = auth.currentUser?.uid;
+  if (!actorUid) {
+    throw new Error('Sesi pengesahan telah tamat. Sila log masuk semula sebelum menyimpan rekod.');
+  }
+  const staffId = params.expertise.staffId;
+  const expPath = `expertise/${staffId}`;
+  const sanitizeList = (arr: string[] | undefined, max: number) =>
+    (arr || [])
+      .map((s) => String(s).trim().slice(0, 160))
+      .filter(Boolean)
+      .slice(0, max);
 
-  const sampleStaff: Array<{
-    staffId: string;
-    fullName: string;
-    email: string;
-    position: string;
-    grade: string;
-    scheme: string;
-    isLecturer: boolean;
-    centerId: string;
-    centerName: string;
-    departmentId: string;
-    departmentName: string;
-    highestQualification: string;
-    primaryExpertise: string;
-    secondaryExpertise: string;
-    digitalCompetencies: string[];
-    keywords: string[];
-    roleLabel: string;
-  }> = [
-    {
-      staffId: 'IAB-UAT-0001',
-      fullName: 'Dr. Haji Ahmad Fauzi bin Ismail',
-      email: 'uat.kp1@iab.edu.my',
-      position: 'Ketua Pusat',
-      grade: 'DG54',
-      scheme: 'Pegawai Perkhidmatan Pendidikan',
-      isLecturer: true,
-      centerId: 'CTR-IAB-INDUK',
-      centerName: 'Pusat Pengurusan dan Kepimpinan Pendidikan',
-      departmentId: 'DEPT-KEPIMPINAN',
-      departmentName: 'Jabatan Kepimpinan Pendidikan',
-      highestQualification: 'PhD',
-      primaryExpertise: 'Kepimpinan Pendidikan',
-      secondaryExpertise: 'Pengurusan Organisasi Pendidikan',
-      digitalCompetencies: ['Digital Leadership', 'Data-Driven Decision Making', 'AI Governance'],
-      keywords: ['NPQEL', 'Kepimpinan Instruksional', 'Pengurusan Sekolah', 'UAT'],
-      roleLabel: 'L1',
-    },
-    {
-      staffId: 'IAB-UAT-0002',
-      fullName: 'Dr. Siti Mariam binti Salleh',
-      email: 'uat.kj1@iab.edu.my',
-      position: 'Ketua Jabatan',
-      grade: 'DG52',
-      scheme: 'Pegawai Perkhidmatan Pendidikan',
-      isLecturer: true,
-      centerId: 'CTR-IAB-INDUK',
-      centerName: 'Pusat Pengurusan dan Kepimpinan Pendidikan',
-      departmentId: 'DEPT-KEPIMPINAN',
-      departmentName: 'Jabatan Kepimpinan Pendidikan',
-      highestQualification: 'PhD',
-      primaryExpertise: 'Kepimpinan Pendidikan',
-      secondaryExpertise: 'Kaunseling, Bimbingan & Pementoran',
-      digitalCompetencies: ['Digital Leadership', 'Educational Technology'],
-      keywords: ['Coaching', 'Mentoring', 'Kepimpinan Transformasi', 'UAT'],
-      roleLabel: 'L2',
-    },
-    {
-      staffId: 'IAB-UAT-0003',
-      fullName: 'Ts. Dr. Faridah binti Yusof',
-      email: 'uat.kj2@iab.edu.my',
-      position: 'Ketua Jabatan',
-      grade: 'DG52',
-      scheme: 'Pegawai Perkhidmatan Pendidikan',
-      isLecturer: true,
-      centerId: 'CTR-TEKNOLOGI-AI',
-      centerName: 'Pusat Pembangunan Teknologi Pendidikan dan AI',
-      departmentId: 'DEPT-AI-GENAI',
-      departmentName: 'Jabatan Kecerdasan Buatan dan Analitik Data',
-      highestQualification: 'PhD',
-      primaryExpertise: 'Kecerdasan Buatan (AI) & GenAI dalam Pendidikan',
-      secondaryExpertise: 'Analitik Data & Pembuatan Keputusan',
-      digitalCompetencies: ['Generative AI', 'AI Governance', 'AI Ethics and Safety', 'Data Analytics', 'Vibe Programming'],
-      keywords: ['GenAI', 'LLM', 'Analitik Pembelajaran', 'Etika AI', 'UAT'],
-      roleLabel: 'L2',
-    },
-    {
-      staffId: 'IAB-UAT-0004',
-      fullName: 'Dr. Noraini binti Harun',
-      email: 'uat.kj3@iab.edu.my',
-      position: 'Ketua Jabatan',
-      grade: 'DG52',
-      scheme: 'Pegawai Perkhidmatan Pendidikan',
-      isLecturer: true,
-      centerId: 'CTR-DASAR-PENYELIDIKAN',
-      centerName: 'Pusat Dasar, Penyelidikan dan Inovasi Pendidikan',
-      departmentId: 'DEPT-PENYELIDIKAN',
-      departmentName: 'Jabatan Penyelidikan dan Pembangunan Dasar',
-      highestQualification: 'PhD',
-      primaryExpertise: 'Dasar dan Perancangan Pendidikan',
-      secondaryExpertise: 'Penyelidikan Pendidikan & Inovasi',
-      digitalCompetencies: ['Data-Driven Decision Making', 'Data Analytics'],
-      keywords: ['Penyelidikan Dasar', 'Metodologi Kajian', 'UAT'],
-      roleLabel: 'L2',
-    },
-    {
-      staffId: 'IAB-UAT-0005',
-      fullName: 'En. Muhammad Syafiq bin Abdullah',
-      email: 'uat.pensyarah1@iab.edu.my',
-      position: 'Pensyarah Kanan',
-      grade: 'DG48',
-      scheme: 'Pegawai Perkhidmatan Pendidikan',
-      isLecturer: true,
-      centerId: 'CTR-TEKNOLOGI-AI',
-      centerName: 'Pusat Pembangunan Teknologi Pendidikan dan AI',
-      departmentId: 'DEPT-AI-GENAI',
-      departmentName: 'Jabatan Kecerdasan Buatan dan Analitik Data',
-      highestQualification: 'Sarjana',
-      primaryExpertise: 'Teknologi Pendidikan & Pembelajaran Digital',
-      secondaryExpertise: 'Kecerdasan Buatan (AI) & GenAI dalam Pendidikan',
-      digitalCompetencies: ['Generative AI', 'Educational Technology', 'Digital Content Development', 'Vibe Programming'],
-      keywords: ['Prompt Engineering', 'Pembelajaran Teradun', 'UAT'],
-      roleLabel: 'L3',
-    },
-    {
-      staffId: 'IAB-UAT-0006',
-      fullName: 'Pn. Rosmawati binti Aziz',
-      email: 'uat.pensyarah2@iab.edu.my',
-      position: 'Pensyarah',
-      grade: 'DG44',
-      scheme: 'Pegawai Perkhidmatan Pendidikan',
-      isLecturer: true,
-      centerId: 'CTR-IAB-INDUK',
-      centerName: 'Pusat Pengurusan dan Kepimpinan Pendidikan',
-      departmentId: 'DEPT-PENGURUSAN-ORG',
-      departmentName: 'Jabatan Pengurusan Organisasi dan Bakat',
-      highestQualification: 'Sarjana',
-      primaryExpertise: 'Pengurusan Bakat & Pembangunan Profesional',
-      secondaryExpertise: 'Pengurusan Kurikulum dan Instruksional',
-      digitalCompetencies: ['Digital Transformation', 'Digital Content Development'],
-      keywords: ['Latihan Eksekutif', 'Pembangunan Kompetensi', 'UAT'],
-      roleLabel: 'L3',
-    },
-    {
-      staffId: 'IAB-UAT-0007',
-      fullName: 'En. Khairul Anuar bin Zulkifli',
-      email: 'uat.pegawai1@iab.edu.my',
-      position: 'Pegawai Teknologi Maklumat',
-      grade: 'F44',
-      scheme: 'Pegawai Teknologi Maklumat',
-      isLecturer: false,
-      centerId: 'CTR-TEKNOLOGI-AI',
-      centerName: 'Pusat Pembangunan Teknologi Pendidikan dan AI',
-      departmentId: 'DEPT-EDTECH',
-      departmentName: 'Jabatan Teknologi Pendidikan Digital',
-      highestQualification: 'Sarjana Muda',
-      primaryExpertise: 'Keselamatan Siber & Tadbir Urus Digital',
-      secondaryExpertise: 'Teknologi Pendidikan & Pembelajaran Digital',
-      digitalCompetencies: ['Cybersecurity Awareness', 'AI Governance', 'Digital Transformation'],
-      keywords: ['Keselamatan ICT', 'Cloud Security', 'UAT'],
-      roleLabel: 'L4',
-    },
-    {
-      staffId: 'IAB-UAT-0008',
-      fullName: 'Cik Nur Syahirah binti Hamid',
-      email: 'uat.sokongan1@iab.edu.my',
-      position: 'Pembantu Tadbir (P/O)',
-      grade: 'N22',
-      scheme: 'Pelaksana',
-      isLecturer: false,
-      centerId: 'CTR-IAB-INDUK',
-      centerName: 'Pusat Pengurusan dan Kepimpinan Pendidikan',
-      departmentId: 'DEPT-PENGURUSAN-ORG',
-      departmentName: 'Jabatan Pengurusan Organisasi dan Bakat',
-      highestQualification: 'Diploma',
-      primaryExpertise: 'Pengurusan Kewangan & Pentadbiran Awam',
-      secondaryExpertise: '',
-      digitalCompetencies: ['Cybersecurity Awareness'],
-      keywords: ['Pentadbiran', 'Rekod Latihan', 'UAT'],
-      roleLabel: 'L5',
-    },
-  ];
+  const safeCenterId = String(params.expertise.centerId || '').slice(0, 64);
+  const safeDepartmentId = String(params.expertise.departmentId || '').slice(0, 64);
+  const safeKeywords = sanitizeList(params.expertise.keywords, 30);
+  const primaryExpertise = String(params.expertise.primaryExpertise || '').trim().slice(0, 160);
+  const secondaryExpertise = String(params.expertise.secondaryExpertise || '').trim().slice(0, 160);
+
+  const expMutableFields = {
+    centerId: safeCenterId,
+    departmentId: safeDepartmentId,
+    primaryExpertise,
+    secondaryExpertise,
+    specializations: sanitizeList(params.expertise.specializations, 20),
+    researchAreas: sanitizeList(params.expertise.researchAreas, 20),
+    teachingAreas: sanitizeList(params.expertise.teachingAreas, 20),
+    trainingAreas: sanitizeList(params.expertise.trainingAreas, 20),
+    keywords: safeKeywords,
+    teachingExp: String(params.expertise.teachingExp || '').trim().slice(0, 1500),
+    managementExp: String(params.expertise.managementExp || '').trim().slice(0, 1500),
+    facilitatorExp: String(params.expertise.facilitatorExp || '').trim().slice(0, 1500),
+    speakerExp: String(params.expertise.speakerExp || '').trim().slice(0, 1500),
+    coachExp: String(params.expertise.coachExp || '').trim().slice(0, 1500),
+    projectExp: String(params.expertise.projectExp || '').trim().slice(0, 1500),
+    professionalExp: String(params.expertise.professionalExp || '').trim().slice(0, 1500),
+    status: params.expertise.status === 'draft' ? ('draft' as const) : ('active' as const),
+    updatedAt: serverTimestamp(),
+    updatedBy: actorUid,
+  };
+
+  let op: OperationType = OperationType.WRITE;
+  try {
+    const expRef = doc(db, 'expertise', staffId);
+    const existing = await getDoc(expRef);
+    let finalUid = String(params.expertise.uid || actorUid).slice(0, 128);
+    if (existing.exists()) {
+      op = OperationType.UPDATE;
+      const existingData = existing.data() as Record<string, unknown>;
+      const isClaimingUid = existingData.uid === '' && Boolean(params.expertise.uid);
+      finalUid = String(isClaimingUid ? params.expertise.uid : existingData.uid || finalUid).slice(0, 128);
+      await updateDoc(expRef, isClaimingUid ? { uid: finalUid, ...expMutableFields } : expMutableFields);
+    } else {
+      op = OperationType.CREATE;
+      await setDoc(expRef, {
+        id: staffId,
+        staffId,
+        uid: finalUid,
+        ...expMutableFields,
+        createdAt: serverTimestamp(),
+        createdBy: actorUid,
+      });
+    }
+
+    const profileRef = doc(db, 'staff_profiles', staffId);
+    const profileSnap = await getDoc(profileRef).catch(() => null);
+    if (profileSnap && profileSnap.exists()) {
+      const profileUpdate: Record<string, unknown> = {
+        primaryExpertise,
+        secondaryExpertise,
+        expertiseKeywords: safeKeywords,
+        updatedAt: serverTimestamp(),
+        updatedBy: actorUid,
+      };
+      if (params.completion) {
+        profileUpdate.completionPercent = Math.max(
+          0,
+          Math.min(100, Math.round(Number(params.completion.completionPercent) || 0))
+        );
+        profileUpdate.missingSections = sanitizeList(params.completion.missingSections, 12);
+      }
+      await updateDoc(profileRef, profileUpdate).catch(() => {});
+    }
+
+    await logAudit({
+      actionType: 'UPDATE_STAFF_EXPERTISE',
+      targetType: 'expertise',
+      targetId: staffId,
+      staffId,
+      outcome: 'success',
+      details: `Mengemas kini kepakaran & pengalaman mengajar (${primaryExpertise || 'Umum'}).`,
+    });
+
+    return {
+      id: staffId,
+      staffId,
+      uid: finalUid,
+      ...expMutableFields,
+      createdBy: actorUid,
+    };
+  } catch (err) {
+    handleFirestoreError(err, op, expPath);
+  }
+}
+
+// =========================================================
+// FUNGSI 1, 2, 5, 6 (staff_functions/{staffId})
+// =========================================================
+export function sanitizeTrainings(list: TrainingRecord[]): TrainingRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('TRN'),
+      moduleName: String(item.moduleName || '').trim().slice(0, 200),
+      role: String(item.role || '').trim().slice(0, 80),
+      year: String(item.year || '').trim().slice(0, 16),
+    }))
+    .filter((i) => i.moduleName.length > 0);
+}
+
+export function sanitizeProgramManagements(list: ProgramManagementRecord[]): ProgramManagementRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('PRG'),
+      programName: String(item.programName || '').trim().slice(0, 200),
+      centerId: String(item.centerId || '').trim().slice(0, 64),
+      centerName: String(item.centerName || '').trim().slice(0, 160),
+      departmentId: String(item.departmentId || '').trim().slice(0, 64),
+      departmentName: String(item.departmentName || '').trim().slice(0, 160),
+      role: String(item.role || '').trim().slice(0, 80),
+      year: String(item.year || '').trim().slice(0, 16),
+    }))
+    .filter((i) => i.programName.length > 0);
+}
+
+export function sanitizeConsultations(list: ConsultationRecord[]): ConsultationRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('CON'),
+      title: String(item.title || '').trim().slice(0, 240),
+      organization: String(item.organization || '').trim().slice(0, 200),
+      consultationType: String(item.consultationType || '').trim().slice(0, 100),
+      role: String(item.role || '').trim().slice(0, 80),
+      year: String(item.year || '').trim().slice(0, 16),
+      impact: String(item.impact || '').trim().slice(0, 500),
+    }))
+    .filter((i) => i.title.length > 0);
+}
+
+export function sanitizeNpqelSupervisions(list: NpqelSupervisionRecord[]): NpqelSupervisionRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('NPQ'),
+      participantName: String(item.participantName || '').trim().slice(0, 160),
+      participantClass: String(item.participantClass || '').trim().slice(0, 80),
+      year: String(item.year || '').trim().slice(0, 16),
+    }))
+    .filter((i) => i.participantName.length > 0);
+}
+
+export function sanitizeProgramEvaluations(list: ProgramEvaluationRecord[]): ProgramEvaluationRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => {
+      const parsed = Number(item.score);
+      const bounded = Number.isFinite(parsed) ? Math.max(0, Math.min(100, Math.round(parsed * 10) / 10)) : 0;
+      return {
+        id: String(item.id || '').trim().slice(0, 64) || makeRecordId('EVA'),
+        programName: String(item.programName || '').trim().slice(0, 200),
+        centerId: String(item.centerId || '').trim().slice(0, 64),
+        centerName: String(item.centerName || '').trim().slice(0, 160),
+        departmentId: String(item.departmentId || '').trim().slice(0, 64),
+        departmentName: String(item.departmentName || '').trim().slice(0, 160),
+        role: String(item.role || '').trim().slice(0, 80),
+        year: String(item.year || '').trim().slice(0, 16),
+        score: bounded,
+      };
+    })
+    .filter((i) => i.programName.length > 0);
+}
+
+export function sanitizeThinkTankEntries(list: ThinkTankRecord[]): ThinkTankRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('THK'),
+      committeeName: String(item.committeeName || '').trim().slice(0, 240),
+      level: String(item.level || '').trim().slice(0, 100),
+      role: String(item.role || '').trim().slice(0, 80),
+      focusArea: String(item.focusArea || '').trim().slice(0, 240),
+      year: String(item.year || '').trim().slice(0, 16),
+      activeStatus: (item.activeStatus === 'Tamat' ? 'Tamat' : 'Aktif') as 'Aktif' | 'Tamat',
+    }))
+    .filter((i) => i.committeeName.length > 0);
+}
+
+export async function getStaffFunctions(staffId: string): Promise<StaffFunctionsRecord | null> {
+  const path = `staff_functions/${staffId}`;
+  try {
+    const snap = await getDoc(doc(db, 'staff_functions', staffId));
+    return snap.exists() ? (snap.data() as StaffFunctionsRecord) : null;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+  }
+}
+
+export async function saveStaffFunctions(params: {
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  trainings: TrainingRecord[];
+  programManagements: ProgramManagementRecord[];
+  consultations: ConsultationRecord[];
+  npqelSupervisions: NpqelSupervisionRecord[];
+  programEvaluations: ProgramEvaluationRecord[];
+  thinkTankEntries: ThinkTankRecord[];
+}): Promise<StaffFunctionsRecord> {
+  const actorUid = auth.currentUser?.uid;
+  if (!actorUid) {
+    throw new Error('Sesi pengesahan telah tamat. Sila log masuk semula sebelum menyimpan rekod fungsi.');
+  }
+  const staffId = params.staffId;
+  const path = `staff_functions/${staffId}`;
+  const safeCenterId = String(params.centerId || '').slice(0, 64);
+  const safeDepartmentId = String(params.departmentId || '').slice(0, 64);
+  const safeTrainings = sanitizeTrainings(params.trainings);
+  const safePrograms = sanitizeProgramManagements(params.programManagements);
+  const safeConsultations = sanitizeConsultations(params.consultations);
+  const safeNpqel = sanitizeNpqelSupervisions(params.npqelSupervisions);
+  const safeEvaluations = sanitizeProgramEvaluations(params.programEvaluations);
+  const safeThinkTanks = sanitizeThinkTankEntries(params.thinkTankEntries);
+
+  let op: OperationType = OperationType.WRITE;
+  try {
+    const ref = doc(db, 'staff_functions', staffId);
+    const existing = await getDoc(ref);
+    const mutableFields = {
+      centerId: safeCenterId,
+      departmentId: safeDepartmentId,
+      trainings: safeTrainings,
+      programManagements: safePrograms,
+      consultations: safeConsultations,
+      npqelSupervisions: safeNpqel,
+      programEvaluations: safeEvaluations,
+      thinkTankEntries: safeThinkTanks,
+      status: 'active' as const,
+      updatedAt: serverTimestamp(),
+      updatedBy: actorUid,
+    };
+
+    let finalUid = String(params.uid || actorUid).slice(0, 128);
+    if (existing.exists()) {
+      op = OperationType.UPDATE;
+      const existingData = existing.data() as Record<string, unknown>;
+      const isClaimingUid = existingData.uid === '' && Boolean(params.uid);
+      finalUid = String(isClaimingUid ? params.uid : existingData.uid || finalUid).slice(0, 128);
+      await updateDoc(ref, isClaimingUid ? { uid: finalUid, ...mutableFields } : mutableFields);
+    } else {
+      op = OperationType.CREATE;
+      await setDoc(ref, {
+        id: staffId,
+        staffId,
+        uid: finalUid,
+        ...mutableFields,
+        createdAt: serverTimestamp(),
+        createdBy: actorUid,
+      });
+    }
+
+    await logAudit({
+      actionType: 'UPDATE_STAFF_FUNCTIONS',
+      targetType: 'staff_functions',
+      targetId: staffId,
+      staffId,
+      outcome: 'success',
+      details: `Mengemas kini rekod fungsi (${safeTrainings.length} latihan, ${safePrograms.length} pengurusan program, ${safeConsultations.length} konsultasi, ${safeNpqel.length + safeEvaluations.length} pentaksiran, ${safeThinkTanks.length} pemikir).`,
+    });
+
+    return {
+      id: staffId,
+      staffId,
+      uid: finalUid,
+      centerId: safeCenterId,
+      departmentId: safeDepartmentId,
+      trainings: safeTrainings,
+      programManagements: safePrograms,
+      consultations: safeConsultations,
+      npqelSupervisions: safeNpqel,
+      programEvaluations: safeEvaluations,
+      thinkTankEntries: safeThinkTanks,
+      status: 'active',
+      createdBy: actorUid,
+      updatedBy: actorUid,
+    };
+  } catch (err) {
+    handleFirestoreError(err, op, path);
+  }
+}
+
+export async function purgeLegacyUatRecords(): Promise<number> {
+  const actorUid = auth.currentUser?.uid;
+  if (!actorUid) return 0;
+
+  const [profSnap, expSnap, qualSnap] = await Promise.all([
+    getDocs(collection(db, 'staff_profiles')),
+    getDocs(collection(db, 'expertise')),
+    getDocs(collection(db, 'qualifications')),
+  ]);
+
+  const uatProfIds = profSnap.docs
+    .map((d) => d.id)
+    .filter((id) => id.startsWith('IAB-UAT-'));
+  const uatExpIds = expSnap.docs
+    .map((d) => d.id)
+    .filter((id) => id.startsWith('IAB-UAT-'));
+  const uatQualIds = qualSnap.docs
+    .filter((d) => {
+      const data = d.data() as Partial<Qualification>;
+      return String(data.staffId || '').startsWith('IAB-UAT-');
+    })
+    .map((d) => d.id);
 
   const batch = writeBatch(db);
-  for (const s of sampleStaff) {
-    const profileRef = doc(db, 'staff_profiles', s.staffId);
-    batch.set(profileRef, {
-      id: s.staffId,
-      staffId: s.staffId,
-      uid: '',
-      role: s.roleLabel as UserRole,
-      fullName: s.fullName,
-      officialEmail: s.email,
-      position: s.position,
-      grade: s.grade,
-      kupGrade: 'TIDAK BERKENAAN',
-      scheme: s.scheme,
-      isLecturer: s.isLecturer,
-      centerId: s.centerId,
-      centerName: s.centerName,
-      departmentId: s.departmentId,
-      departmentName: s.departmentName,
-      unit: 'Unit Pembangunan Profesional',
-      orgPosition: s.position,
-      headOfCenter: 'Ketua Pusat IAB',
-      headOfDepartment: 'Ketua Jabatan IAB',
-      highestQualification: s.highestQualification,
-      primaryExpertise: s.primaryExpertise,
-      secondaryExpertise: s.secondaryExpertise,
-      digitalCompetencies: s.digitalCompetencies,
-      expertiseKeywords: s.keywords,
-      completionPercent: 75,
-      missingSections: ['I. Gambar Pegawai', 'J. Sijil & Dokumen'],
-      hasPhoto: false,
-      photoDisplayUrl: '',
-      certificateCount: 0,
-      publicationCount: 1,
-      status: 'active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdBy: adminUid,
-      updatedBy: adminUid,
-    });
-
-    const expRef = doc(db, 'expertise', s.staffId);
-    batch.set(expRef, {
-      id: s.staffId,
-      staffId: s.staffId,
-      uid: '',
-      centerId: s.centerId,
-      departmentId: s.departmentId,
-      primaryExpertise: s.primaryExpertise,
-      secondaryExpertise: s.secondaryExpertise,
-      specializations: [s.primaryExpertise],
-      researchAreas: [s.primaryExpertise],
-      teachingAreas: [s.primaryExpertise],
-      trainingAreas: ['Kursus Kepimpinan & Pengurusan Pendidikan'],
-      keywords: s.keywords,
-      teachingExp: 'Mengendalikan latihan eksekutif dan bengkel kepimpinan pegawai pendidikan.',
-      managementExp: 'Penyelaras program pembangunan kapasiti peringkat institut.',
-      facilitatorExp: 'Fasilitator bengkel strategi dan transformasi digital.',
-      speakerExp: 'Penceramah jemputan seminar pengurusan pendidikan.',
-      coachExp: 'Jurulatih bimbingan kepimpinan sekolah.',
-      projectExp: 'Ahli pasukan projek pendigitalan latihan IAB.',
-      professionalExp: 'Berpengalaman dalam sektor pendidikan dan latihan kepimpinan.',
-      status: 'active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdBy: adminUid,
-      updatedBy: adminUid,
-    });
-
-    const qualId = `QUAL-${s.staffId}-1`;
-    batch.set(doc(db, 'qualifications', qualId), {
-      id: qualId,
-      staffId: s.staffId,
-      uid: '',
-      centerId: s.centerId,
-      departmentId: s.departmentId,
-      level: s.highestQualification as Qualification['level'],
-      institution: 'Universiti Awam Malaysia',
-      fieldOfStudy: s.primaryExpertise,
-      graduationYear: '2018',
-      notes: 'Rekod sampel UAT',
-      status: 'active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      createdBy: adminUid,
-      updatedBy: adminUid,
+  for (const id of uatProfIds) batch.delete(doc(db, 'staff_profiles', id));
+  for (const id of uatExpIds) batch.delete(doc(db, 'expertise', id));
+  for (const id of uatQualIds) batch.delete(doc(db, 'qualifications', id));
+  const totalRemoved = uatProfIds.length + uatExpIds.length + uatQualIds.length;
+  if (totalRemoved > 0) {
+    await batch.commit();
+    await logAudit({
+      actionType: 'PURGE_UAT_DUMMY_DATA',
+      targetType: 'staff_profiles',
+      targetId: 'UAT_CLEANUP',
+      outcome: 'success',
+      details: `Membersihkan ${uatProfIds.length} profil dummy IAB-UAT-* dan rekod berkaitan.`,
     });
   }
-
-  await batch.commit();
-
-  await logAudit({
-    actionType: 'SEED_UAT_DATA',
-    targetType: 'staff_profiles',
-    targetId: 'UAT_BATCH',
-    outcome: 'success',
-    details: `Menjana ${sampleStaff.length} rekod sampel UAT berlabel IAB-UAT-*`,
-  });
-
-  return sampleStaff.length;
+  return uatProfIds.length;
 }

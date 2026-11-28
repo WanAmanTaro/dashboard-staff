@@ -6,15 +6,20 @@ import { ToastProvider } from './components/Toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { isCountableStaff } from './lib/constants';
 import { testConnection } from './lib/firebase';
+import { AcademicQualificationsPage } from './pages/AcademicQualificationsPage';
 import { AdminPage } from './pages/AdminPage';
 import { CapacityAnalysisPage } from './pages/CapacityAnalysisPage';
 import { CenterDashboardPage } from './pages/CenterDashboardPage';
 import { DepartmentDashboardPage } from './pages/DepartmentDashboardPage';
+import { DigitalCompetencyPage } from './pages/DigitalCompetencyPage';
 import { ExpertiseDirectoryPage } from './pages/ExpertiseDirectoryPage';
 import { KompetensiIabPage } from './pages/KompetensiIabPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProfessionalProfilePdfPage } from './pages/ProfessionalProfilePdfPage';
+import { ResearchAndPublicationPage } from './pages/ResearchAndPublicationPage';
+import { StaffFunctionsPage } from './pages/StaffFunctionsPage';
 import { StaffProfilePage } from './pages/StaffProfilePage';
+import { TeachingExperiencePage } from './pages/TeachingExperiencePage';
 import { WelcomePage } from './pages/WelcomePage';
 import {
   getSystemSettings,
@@ -45,7 +50,16 @@ function canAccessRoute(route: AppRoute, account: UserAccount): boolean {
   if (account.isAdmin) return true;
   switch (route) {
     case 'profile':
+    case 'academic-qualifications':
+    case 'teaching-experience':
+    case 'fungsi-latihan':
+    case 'fungsi-konsultasi':
+    case 'fungsi-penyelidikan':
+    case 'fungsi-penerbitan':
+    case 'fungsi-pentaksiran':
+    case 'fungsi-pemikir':
     case 'kompetensi-iab':
+    case 'digital-competencies':
     case 'professional-pdf':
       return true;
     case 'center-dashboard':
@@ -195,8 +209,98 @@ const AppContent: React.FC = () => {
         />
       )}
 
+      {resolvedRoute === 'academic-qualifications' && (
+        <AcademicQualificationsPage
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          sysSettings={sysSettings}
+          onSystemSettingsUpdated={refreshSystemSettings}
+        />
+      )}
+
+      {resolvedRoute === 'teaching-experience' && (
+        <TeachingExperiencePage
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          sysSettings={sysSettings}
+        />
+      )}
+
+      {resolvedRoute === 'fungsi-latihan' && (
+        <StaffFunctionsPage
+          activeSection="latihan"
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          organizations={organizations}
+          departments={departments}
+          sysSettings={sysSettings}
+        />
+      )}
+
+      {resolvedRoute === 'fungsi-konsultasi' && (
+        <StaffFunctionsPage
+          activeSection="konsultasi"
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          organizations={organizations}
+          departments={departments}
+          sysSettings={sysSettings}
+        />
+      )}
+
+      {resolvedRoute === 'fungsi-penyelidikan' && (
+        <ResearchAndPublicationPage
+          mode="penyelidikan"
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          sysSettings={sysSettings}
+          onSystemSettingsUpdated={refreshSystemSettings}
+        />
+      )}
+
+      {resolvedRoute === 'fungsi-penerbitan' && (
+        <ResearchAndPublicationPage
+          mode="penerbitan"
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          sysSettings={sysSettings}
+          onSystemSettingsUpdated={refreshSystemSettings}
+        />
+      )}
+
+      {resolvedRoute === 'fungsi-pentaksiran' && (
+        <StaffFunctionsPage
+          activeSection="pentaksiran"
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          organizations={organizations}
+          departments={departments}
+          sysSettings={sysSettings}
+        />
+      )}
+
+      {resolvedRoute === 'fungsi-pemikir' && (
+        <StaffFunctionsPage
+          activeSection="pemikir"
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          organizations={organizations}
+          departments={departments}
+          sysSettings={sysSettings}
+        />
+      )}
+
       {resolvedRoute === 'kompetensi-iab' && (
         <KompetensiIabPage
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          sysSettings={sysSettings}
+          onSystemSettingsUpdated={refreshSystemSettings}
+        />
+      )}
+
+      {resolvedRoute === 'digital-competencies' && (
+        <DigitalCompetencyPage
           userAccount={userAccount}
           profiles={countableProfiles}
           sysSettings={sysSettings}
@@ -220,6 +324,8 @@ const AppContent: React.FC = () => {
         <DepartmentDashboardPage
           profiles={countableProfiles}
           competencyRecords={competencyRecords}
+          iabCompetencyRecords={iabCompetencyRecords}
+          sysSettings={sysSettings}
           departments={departments}
           onInspectProfile={handleInspectProfile}
         />

@@ -520,7 +520,7 @@ service cloud.firestore {
       && isValidString(data.uid, 0, 128)
       && isValidString(data.centerId, 0, 64)
       && isValidString(data.departmentId, 0, 64)
-      && data.type in ['Buku', 'Artikel Jurnal', 'Prosiding', 'Penyelidikan', 'Inovasi', 'Pengiktirafan']
+      && data.type in ['Buku', 'Artikel Jurnal', 'Prosiding', 'Modul', 'Sumber Rujukan', 'Penyelidikan', 'Inovasi', 'Pengiktirafan']
       && isValidString(data.title, 1, 240)
       && isValidString(data.publisherOrVenue, 0, 200)
       && isValidString(data.year, 1, 10)
@@ -685,6 +685,74 @@ service cloud.firestore {
       && (!('publicationYears' in data) || isValidStringList(data.publicationYears, 40))
       && (!('iabModules' in data) || isValidStringList(data.iabModules, 100))
       && data.status == 'active'
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidStaffFunctions(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId',
+        'trainings', 'programManagements', 'consultations',
+        'npqelSupervisions', 'programEvaluations', 'thinkTankEntries',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId',
+        'trainings', 'programManagements', 'consultations',
+        'npqelSupervisions', 'programEvaluations', 'thinkTankEntries',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && data.id == data.staffId
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.trainings is list && data.trainings.size() <= 100
+      && (data.trainings.size() == 0 || (
+        data.trainings[0] is map
+        && data.trainings[0].keys().hasOnly(['id', 'moduleName', 'role', 'year'])
+        && data.trainings[0].id is string && data.trainings[0].id.size() <= 64
+        && data.trainings[0].moduleName is string && data.trainings[0].moduleName.size() >= 1 && data.trainings[0].moduleName.size() <= 200
+        && data.trainings[0].role is string && data.trainings[0].role.size() <= 80
+        && data.trainings[0].year is string && data.trainings[0].year.size() <= 16
+      ))
+      && data.programManagements is list && data.programManagements.size() <= 100
+      && (data.programManagements.size() == 0 || (
+        data.programManagements[0] is map
+        && data.programManagements[0].keys().hasOnly(['id', 'programName', 'centerId', 'centerName', 'departmentId', 'departmentName', 'role', 'year'])
+        && data.programManagements[0].id is string && data.programManagements[0].id.size() <= 64
+        && data.programManagements[0].programName is string && data.programManagements[0].programName.size() >= 1 && data.programManagements[0].programName.size() <= 200
+      ))
+      && data.consultations is list && data.consultations.size() <= 100
+      && (data.consultations.size() == 0 || (
+        data.consultations[0] is map
+        && data.consultations[0].keys().hasOnly(['id', 'title', 'organization', 'consultationType', 'role', 'year', 'impact'])
+        && data.consultations[0].id is string && data.consultations[0].id.size() <= 64
+        && data.consultations[0].title is string && data.consultations[0].title.size() >= 1 && data.consultations[0].title.size() <= 240
+      ))
+      && data.npqelSupervisions is list && data.npqelSupervisions.size() <= 100
+      && (data.npqelSupervisions.size() == 0 || (
+        data.npqelSupervisions[0] is map
+        && data.npqelSupervisions[0].keys().hasOnly(['id', 'participantName', 'participantClass', 'year'])
+        && data.npqelSupervisions[0].id is string && data.npqelSupervisions[0].id.size() <= 64
+        && data.npqelSupervisions[0].participantName is string && data.npqelSupervisions[0].participantName.size() >= 1 && data.npqelSupervisions[0].participantName.size() <= 160
+      ))
+      && data.programEvaluations is list && data.programEvaluations.size() <= 100
+      && (data.programEvaluations.size() == 0 || (
+        data.programEvaluations[0] is map
+        && data.programEvaluations[0].keys().hasOnly(['id', 'programName', 'centerId', 'centerName', 'departmentId', 'departmentName', 'role', 'year', 'score'])
+        && data.programEvaluations[0].id is string && data.programEvaluations[0].id.size() <= 64
+        && data.programEvaluations[0].programName is string && data.programEvaluations[0].programName.size() >= 1 && data.programEvaluations[0].programName.size() <= 200
+        && data.programEvaluations[0].score is number && data.programEvaluations[0].score >= 0 && data.programEvaluations[0].score <= 100
+      ))
+      && data.thinkTankEntries is list && data.thinkTankEntries.size() <= 100
+      && (data.thinkTankEntries.size() == 0 || (
+        data.thinkTankEntries[0] is map
+        && data.thinkTankEntries[0].keys().hasOnly(['id', 'committeeName', 'level', 'role', 'focusArea', 'year', 'activeStatus'])
+        && data.thinkTankEntries[0].id is string && data.thinkTankEntries[0].id.size() <= 64
+        && data.thinkTankEntries[0].committeeName is string && data.thinkTankEntries[0].committeeName.size() >= 1 && data.thinkTankEntries[0].committeeName.size() <= 240
+      ))
+      && data.status in ['active', 'draft']
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
     }
@@ -916,6 +984,27 @@ service cloud.firestore {
       allow update: if isVerified() && isValidId(compId) && isValidIabCompetency(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId
         && canUpdateOwnedStaffRecord();
       allow delete: if isAdmin() && isValidId(compId);
+    }
+
+    // 8c. staff_functions
+    match /staff_functions/{fnId} {
+      allow get: if isValidId(fnId) && (
+        (resource == null && canReadMissingDirectoryDocForStaff(fnId))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userHasAnyStaffId() && resource.data.staffId == userDoc().staffId)
+          || userCenterIdMatches(resource.data.centerId)
+          || userDepartmentIdMatches(resource.data.departmentId)
+          || (isL3OrL4() && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(fnId) && isValidStaffFunctions(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == fnId
+        && canCreateOwnedStaffRecord(fnId, incoming());
+      allow update: if isVerified() && isValidId(fnId) && isValidStaffFunctions(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId
+        && canUpdateOwnedStaffRecord();
+      allow delete: if isAdmin() && isValidId(fnId);
     }
 
     // 9. publications

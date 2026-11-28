@@ -22,7 +22,6 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  Sparkles,
   Trash2,
   Unplug,
   UserCheck,
@@ -62,10 +61,10 @@ import {
   getAllPhotosAdmin,
   getSystemSettings,
   makeRecordId,
+  purgeLegacyUatRecords,
   saveDepartment,
   saveOrganization,
   saveSystemSettings,
-  seedUatTestRecords,
   subscribeAuditLogs,
   subscribeInvitations,
   subscribeUsers,
@@ -616,18 +615,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     });
   };
 
-  const handleSeedUat = () => {
+  const legacyUatCount = useMemo(
+    () => profiles.filter((p) => p.staffId.startsWith('IAB-UAT-')).length,
+    [profiles]
+  );
+
+  const handlePurgeLegacyUat = () => {
     if (!userAccount) return;
     setConfirmState({
       open: true,
-      title: 'Jana Rekod Sampel Ujian Penerimaan Pengguna (UAT)?',
+      title: 'Bersihkan Rekod Sampel Dummy (IAB-UAT-*)?',
       description:
-        'Tindakan ini akan menulis 8 profil pegawai sampel bertanda khas "IAB-UAT-*" dan struktur Pusat/Jabatan lalai ke Firestore untuk tujuan UAT dan semakan analitik. Data sedia ada tidak dipadam.',
-      variant: 'primary',
-      confirmLabel: 'Jana Data UAT',
+        'Tindakan ini akan memadam semua profil sampel IAB-UAT-* yang terdahulu beserta rekod kepakaran dan kelayakan berkaitannya daripada Firestore.',
+      variant: 'danger',
+      confirmLabel: 'Padam Rekod Sampel',
       onConfirm: async () => {
-        const count = await seedUatTestRecords(userAccount.uid);
-        showToast('success', `${count} rekod sampel UAT (IAB-UAT-0001 hingga IAB-UAT-0008) berjaya dijana.`);
+        const count = await purgeLegacyUatRecords();
+        showToast('success', `${count} rekod sampel dummy IAB-UAT-* telah dibersihkan.`);
       },
     });
   };
@@ -2187,29 +2191,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
               </div>
 
-              {/* Explicit Admin-triggered UAT Dataset Seeder */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-[#C69738]" />
-                  <h3 className="text-base font-bold text-[#0B1F3B]">
-                    Penjanaan Data Sampel Ujian Penerimaan (UAT)
-                  </h3>
+              {legacyUatCount > 0 && (
+                <div className="bg-white border border-amber-200 rounded-xl p-6 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-5 h-5 text-red-600" />
+                    <h3 className="text-base font-bold text-[#0B1F3B]">
+                      Pembersihan Rekod Sampel Terdahulu ({legacyUatCount})
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Dikesan <span className="font-mono-tabular font-semibold">{legacyUatCount}</span> rekod dummy{' '}
+                    <span className="font-mono-tabular font-semibold">IAB-UAT-*</span> yang masih tersimpan dalam Firestore.
+                    Klik butang di bawah untuk membersihkan rekod sampel tersebut sepenuhnya.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handlePurgeLegacyUat}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Bersihkan Data Sampel Dummy
+                  </button>
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Fungsi ini hanya dijalankan atas arahan Pentadbir Sistem untuk mengisi rekod sampel bertanda{' '}
-                  <span className="font-mono-tabular font-semibold">IAB-UAT-0001</span> hingga{' '}
-                  <span className="font-mono-tabular font-semibold">IAB-UAT-0008</span> bersama struktur Pusat dan
-                  Jabatan bagi pengujian UAT.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleSeedUat}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-[#0B1F3B] bg-[#C69738] hover:bg-[#d7a846] rounded-lg"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Jana Data Sampel Ujian (UAT)
-                </button>
-              </div>
+              )}
             </div>
           )}
 

@@ -86,13 +86,61 @@ export const QUALIFICATION_LEVELS: QualificationLevel[] = [
   'Kelayakan Lain',
 ];
 
-export const PUBLICATION_TYPES: PublicationType[] = [
+export const WRITING_PUBLICATION_TYPES: PublicationType[] = [
   'Buku',
   'Artikel Jurnal',
   'Prosiding',
+  'Modul',
+  'Sumber Rujukan',
+];
+
+export const RESEARCH_PUBLICATION_TYPES: PublicationType[] = [
   'Penyelidikan',
   'Inovasi',
   'Pengiktirafan',
+];
+
+export const PUBLICATION_TYPES: PublicationType[] = [
+  ...WRITING_PUBLICATION_TYPES,
+  ...RESEARCH_PUBLICATION_TYPES,
+];
+
+export const TRAINING_ROLES: string[] = [
+  'Tenaga Pengajar',
+  'Fasilitator',
+  'Penceramah',
+  'Penyelaras',
+  'Pembimbing',
+];
+
+export const PROGRAM_MANAGEMENT_ROLES: string[] = [
+  'Pengurus',
+  'Pengurus Bersama',
+  'Penyelaras',
+  'Urusetia',
+];
+
+export const CONSULTATION_TYPES: string[] = [
+  'Khidmat Nasihat',
+  'Bimbingan & Pementoran',
+  'Sokongan Transformasi',
+  'Penilaian & Audit Organisasi',
+  'Intervensi Kepimpinan',
+];
+
+export const THINK_TANK_LEVELS: string[] = [
+  'IAB / Institut',
+  'Kementerian Pendidikan Malaysia (KPM)',
+  'Kebangsaan',
+  'Antarabangsa',
+];
+
+export const THINK_TANK_ROLES: string[] = [
+  'Pengerusi',
+  'Ketua Kumpulan',
+  'Ahli Teras',
+  'Ahli',
+  'Pakar Rujuk',
 ];
 
 export const CERTIFICATE_CATEGORIES: CertificateCategory[] = [
@@ -423,6 +471,38 @@ export function sortPublicationsDefault(list: Publication[]): Publication[] {
     if (yrB !== yrA) return yrB - yrA;
     return a.title.localeCompare(b.title);
   });
+}
+
+export function computeYearsOfService(appointmentDate?: string): number {
+  const raw = String(appointmentDate || '').trim();
+  if (!raw) return 0;
+  const parts = raw.split('-').map((n) => Number(n));
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return 0;
+  const [y, m, d] = parts;
+  if (y < 1940 || m < 1 || m > 12 || d < 1 || d > 31) return 0;
+  const now = new Date();
+  let years = now.getFullYear() - y;
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  if (currentMonth < m || (currentMonth === m && currentDay < d)) {
+    years -= 1;
+  }
+  return Math.max(0, Math.min(80, years));
+}
+
+export function getProgramEvaluationRating(score: number): string {
+  const val = Number(score);
+  if (!Number.isFinite(val)) return '-';
+  if (val >= 90) return 'Cemerlang';
+  if (val >= 80) return 'Sangat Baik';
+  if (val >= 70) return 'Baik';
+  if (val >= 60) return 'Memuaskan';
+  return 'Perlu Penambahbaikan';
+}
+
+export function computePercentage(part: number, total: number): number {
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(part) || part <= 0) return 0;
+  return Math.round((part / total) * 100);
 }
 
 export function formatBytes(bytes: number): string {
