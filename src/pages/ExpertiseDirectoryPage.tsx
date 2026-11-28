@@ -3,14 +3,25 @@ import { FileText, Search, UserCheck } from 'lucide-react';
 import { DriveImage } from '../components/DriveImage';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  DEFAULT_COMPETENCY_CATEGORIES,
+  DEFAULT_APPLICATION_SKILL_CATEGORIES,
   DEFAULT_EXPERTISE_CATEGORIES,
+  DEFAULT_KNOWLEDGE_SKILL_CATEGORIES,
+  isCountableStaff,
 } from '../lib/constants';
 import { getAllExpertiseForScope, getSystemSettings } from '../services/firestoreService';
-import type { Department, ExpertiseRecord, StaffProfile, SystemSetting } from '../types/iab';
+import type {
+  CompetencyItem,
+  CompetencyRecord,
+  Department,
+  ExpertiseRecord,
+  StaffProfile,
+  SystemSetting,
+} from '../types/iab';
 
 interface ExpertiseDirectoryPageProps {
   profiles: StaffProfile[];
+  competencyRecords?: CompetencyRecord[];
+  sysSettings?: SystemSetting | null;
   departments: Department[];
   onInspectProfile: (staffId: string) => void;
   onGeneratePdfFor: (staffId: string) => void;
@@ -18,19 +29,24 @@ interface ExpertiseDirectoryPageProps {
 
 export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
   profiles,
+  competencyRecords = [],
+  sysSettings: propSysSettings,
   departments,
   onInspectProfile,
   onGeneratePdfFor,
 }) => {
   const { userAccount } = useAuth();
   const [expertiseMap, setExpertiseMap] = useState<Map<string, ExpertiseRecord>>(new Map());
-  const [sysSettings, setSysSettings] = useState<SystemSetting | null>(null);
+  const [localSettings, setLocalSettings] = useState<SystemSetting | null>(null);
 
   const [queryText, setQueryText] = useState('');
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [expertiseFilter, setExpertiseFilter] = useState('ALL');
+  const [skillTypeFilter, setSkillTypeFilter] = useState<'ALL' | 'aplikasi' | 'pengetahuan'>('ALL');
   const [competencyFilter, setCompetencyFilter] = useState('ALL');
   const [roleExpFilter, setRoleExpFilter] = useState<'ALL' | 'facilitator' | 'speaker' | 'coach'>('ALL');
+
+  const sysSettings = propSysSettings || localSettings;
 
   useEffect(() => {
     if (!userAccount) return;
@@ -41,20 +57,46 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
         setExpertiseMap(m);
       })
       .catch(() => {});
-    getSystemSettings().then(setSysSettings).catch(() => {});
-  }, [userAccount?.uid]);
+    if (!propSysSettings) {
+      getSystemSettings().then(setLocalSettings).catch(() => {});
+    }
+  }, [userAccount?.uid, propSysSettings]);
+
+  const compMap = useMemo(() => {
+    const m = new Map<string, CompetencyItem[]>();
+    for (const rec of competencyRecords) {
+      m.set(rec.staffId, rec.items || []);
+    }
+    return m;
+  }, [competencyRecords]);
+
+  const countableProfiles = useMemo(
+    () => profiles.filter((p) => isCountableStaff(p)),
+    [profiles]
+  );
 
   const expertiseCategories = sysSettings?.expertiseCategories?.length
     ? sysSettings.expertiseCategories
     : DEFAULT_EXPERTISE_CATEGORIES;
-  const competencyCategories = sysSettings?.competencyCategories?.length
-    ? sysSettings.competencyCategories
-    : DEFAULT_COMPETENCY_CATEGORIES;
+
+  const appSkillCategories = sysSettings?.applicationSkillCategories?.length
+    ? sysSettings.applicationSkillCategories
+    : DEFAULT_APPLICATION_SKILL_CATEGORIES;
+  const knowSkillCategories = sysSettings?.knowledgeSkillCategories?.length
+    ? sysSettings.knowledgeSkillCategories
+    : DEFAULT_KNOWLEDGE_SKILL_CATEGORIES;
+
+  const competencyCategories = useMemo(() => {
+    if (skillTypeFilter === 'aplikasi') return appSkillCategories;
+    if (skillTypeFilter === 'pengetahuan') return knowSkillCategories;
+    return Array.from(new Set([...appSkillCategories, ...knowSkillCategories]));
+  }, [skillTypeFilter, appSkillCategories, knowSkillCategories]);
 
   const filtered = useMemo(() => {
     const q = queryText.trim().toLowerCase();
-    return profiles.filter((p) => {
+    return countableProfiles.filter((p) => {
       const exp = expertiseMap.get(p.staffId);
+      const items = compMap.get(p.staffId) || [];
       if (deptFilter !== 'ALL' && p.departmentId !== deptFilter) return false;
       if (
         expertiseFilter !== 'ALL' &&
@@ -63,11 +105,19 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
       ) {
         return false;
       }
-      if (
-        competencyFilter !== 'ALL' &&
-        !p.digitalCompetencies?.includes(competencyFilter)
-      ) {
-        return false;
+      if (skillTypeFilter !== 'ALL') {
+        const matchesType = items.some((i) => i.skillType === skillTypeFilter);
+        if (!matchesType) return false;
+      }
+      if (competencyFilter !== 'ALL') {
+        const matchesComp =
+          items.some(
+            (i) =>
+              i.categoryName === competencyFilter &&
+              (skillTypeFilter === 'ALL' || i.skillType === skillTypeFilter)
+          ) ||
+          (skillTypeFilter === 'ALL' && p.digitalCompetencies?.includes(competencyFilter));
+        if (!matchesComp) return false;
       }
       if (roleExpFilter === 'facilitator' && !exp?.facilitatorExp?.trim()) return false;
       if (roleExpFilter === 'speaker' && !exp?.speakerExp?.trim()) return false;
@@ -83,6 +133,7 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
         p.secondaryExpertise,
         ...(p.expertiseKeywords || []),
         ...(p.digitalCompetencies || []),
+        ...items.map((i) => `${i.categoryName} ${i.level} ${i.skillType}`),
         ...(exp?.researchAreas || []),
         ...(exp?.specializations || []),
         exp?.facilitatorExp || '',
@@ -94,7 +145,17 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
 
       return haystack.includes(q);
     });
-  }, [profiles, expertiseMap, queryText, deptFilter, expertiseFilter, competencyFilter, roleExpFilter]);
+  }, [
+    countableProfiles,
+    expertiseMap,
+    compMap,
+    queryText,
+    deptFilter,
+    expertiseFilter,
+    skillTypeFilter,
+    competencyFilter,
+    roleExpFilter,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -102,18 +163,18 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
         <div>
           <h2 className="text-lg font-bold text-[#0B1F3B]">Direktori Kepakaran Organisasi IAB</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Carian berbilang kriteria menggunakan kategori piawai kawalan Admin untuk mengenal pasti tenaga pakar, fasilitator, penceramah dan jurulatih.
+            Carian berbilang kriteria menggunakan kategori piawai kawalan Admin serta maklumat terkini Kompetensi Digital & AI (Bahagian F).
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="relative lg:col-span-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={queryText}
               onChange={(e) => setQueryText(e.target.value)}
-              placeholder="Cari nama, kepakaran khusus, penyelidikan atau kata kunci..."
+              placeholder="Cari nama, kepakaran, kemahiran AI..."
               className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-[#0B1F3B]"
             />
           </div>
@@ -142,6 +203,19 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
                 {c}
               </option>
             ))}
+          </select>
+
+          <select
+            value={skillTypeFilter}
+            onChange={(e) => {
+              setSkillTypeFilter(e.target.value as 'ALL' | 'aplikasi' | 'pengetahuan');
+              setCompetencyFilter('ALL');
+            }}
+            className="px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+          >
+            <option value="ALL">Semua Jenis Kemahiran</option>
+            <option value="aplikasi">Kemahiran Aplikasi</option>
+            <option value="pengetahuan">Kemahiran Pengetahuan</option>
           </select>
 
           <select
@@ -184,7 +258,7 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
           </div>
 
           <span className="text-xs text-slate-600 font-mono-tabular">
-            Menunjukkan {filtered.length} daripada {profiles.length} pegawai
+            Menunjukkan {filtered.length} daripada {countableProfiles.length} pegawai
           </span>
         </div>
       </div>
@@ -201,6 +275,9 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filtered.map((p) => {
             const exp = expertiseMap.get(p.staffId);
+            const items = compMap.get(p.staffId) || [];
+            const appItems = items.filter((i) => i.skillType === 'aplikasi');
+            const knowItems = items.filter((i) => i.skillType === 'pengetahuan');
             const expSummary =
               exp?.facilitatorExp || exp?.speakerExp || exp?.coachExp || exp?.professionalExp || '';
             return (
@@ -232,7 +309,27 @@ export const ExpertiseDirectoryPage: React.FC<ExpertiseDirectoryPageProps> = ({
                       <span className="font-semibold text-[#0B1F3B]">Kepakaran Utama:</span>{' '}
                       {p.primaryExpertise || 'Belum diisi'}
                     </p>
-                    {p.digitalCompetencies?.length > 0 && (
+                    {appItems.length > 0 && (
+                      <p className="text-slate-600">
+                        <span className="font-semibold text-slate-700">Aplikasi AI:</span>{' '}
+                        {appItems
+                          .slice(0, 3)
+                          .map((i) => `${i.categoryName} (${i.level})`)
+                          .join(' · ')}
+                        {appItems.length > 3 ? ` +${appItems.length - 3}` : ''}
+                      </p>
+                    )}
+                    {knowItems.length > 0 && (
+                      <p className="text-slate-600">
+                        <span className="font-semibold text-slate-700">Pengetahuan AI:</span>{' '}
+                        {knowItems
+                          .slice(0, 3)
+                          .map((i) => `${i.categoryName} (${i.level})`)
+                          .join(' · ')}
+                        {knowItems.length > 3 ? ` +${knowItems.length - 3}` : ''}
+                      </p>
+                    )}
+                    {items.length === 0 && p.digitalCompetencies?.length > 0 && (
                       <p className="text-slate-600">
                         <span className="font-semibold text-slate-700">Kompetensi AI/Digital:</span>{' '}
                         {p.digitalCompetencies.slice(0, 3).join(' · ')}

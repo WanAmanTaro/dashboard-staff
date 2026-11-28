@@ -9,7 +9,7 @@
         "email": { "type": "string", "format": "email", "maxLength": 200 },
         "displayName": { "type": "string", "maxLength": 160 },
         "staffId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]*$" },
-        "role": { "type": "string", "enum": ["L1", "L2", "L3", "L4", "L5"] },
+        "role": { "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"] },
         "isAdmin": { "type": "boolean" },
         "status": { "type": "string", "enum": ["pending", "active", "suspended", "inactive"] },
         "centerId": { "type": "string", "maxLength": 64 },
@@ -34,7 +34,7 @@
         "email": { "type": "string", "format": "email", "maxLength": 200 },
         "fullName": { "type": "string", "maxLength": 160 },
         "staffId": { "type": "string", "maxLength": 64 },
-        "role": { "type": "string", "enum": ["L1", "L2", "L3", "L4", "L5"] },
+        "role": { "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"] },
         "isAdmin": { "type": "boolean" },
         "centerId": { "type": "string", "maxLength": 64 },
         "departmentId": { "type": "string", "maxLength": 64 },
@@ -54,10 +54,12 @@
         "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "staffId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "uid": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4", "L5"] },
         "fullName": { "type": "string", "maxLength": 160 },
         "officialEmail": { "type": "string", "format": "email", "maxLength": 200 },
         "position": { "type": "string", "maxLength": 120 },
         "grade": { "type": "string", "maxLength": 40 },
+        "kupGrade": { "type": "string", "maxLength": 40 },
         "scheme": { "type": "string", "maxLength": 80 },
         "isLecturer": { "type": "boolean" },
         "centerId": { "type": "string", "maxLength": 64 },
@@ -201,7 +203,7 @@
     },
     "CompetencyRecord": {
       "title": "CompetencyRecord",
-      "description": "Kompetensi digital dan AI pegawai.",
+      "description": "Kompetensi digital dan AI pegawai termasuk status sijil kursus dan tempoh sah laku sijil (tarikh mula, tarikh tamat, tempoh sah laku).",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 64 },
@@ -228,6 +230,7 @@
         "title": { "type": "string", "maxLength": 240 },
         "publisherOrVenue": { "type": "string", "maxLength": 200 },
         "year": { "type": "string", "maxLength": 10 },
+        "achievement": { "type": "string", "maxLength": 200 },
         "url": { "type": "string", "maxLength": 500 },
         "description": { "type": "string", "maxLength": 1000 },
         "status": { "type": "string", "enum": ["active", "archived"] },
@@ -352,9 +355,29 @@
       },
       "required": ["id", "staffId", "uid", "templateType", "dataVersion", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
     },
+    "IabCompetencyRecord": {
+      "title": "IabCompetencyRecord",
+      "description": "Rekod Kompetensi IAB pegawai merangkumi Bahagian A (Pensijilan & Prasyarat) dan Bahagian B (Penggubal/Pembangun Modul/CPD).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "certifications": { "type": "array" },
+        "modules": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "certifications", "modules", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
     "SystemSetting": {
       "title": "SystemSetting",
-      "description": "Tetapan sistem, katalog kategori kepakaran, dan senarai kompetensi digital/AI kawalan Admin.",
+      "description": "Tetapan sistem, katalog kategori kepakaran, institusi, tahun penerbitan, modul IAB dan senarai kompetensi digital/AI kawalan Admin.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 64 },
@@ -362,6 +385,11 @@
         "institutionName": { "type": "string", "maxLength": 160 },
         "expertiseCategories": { "type": "array" },
         "competencyCategories": { "type": "array" },
+        "applicationSkillCategories": { "type": "array" },
+        "knowledgeSkillCategories": { "type": "array" },
+        "institutionCategories": { "type": "array" },
+        "publicationYears": { "type": "array" },
+        "iabModules": { "type": "array" },
         "status": { "type": "string", "enum": ["active"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" },
@@ -407,6 +435,10 @@
     "/competencies/{compId}": {
       "schema": { "$ref": "#/entities/CompetencyRecord" },
       "description": "Rekod kompetensi digital dan AI pegawai."
+    },
+    "/iab_competencies/{compId}": {
+      "schema": { "$ref": "#/entities/IabCompetencyRecord" },
+      "description": "Rekod Kompetensi IAB pegawai (Pensijilan & Penggubal Modul/CPD)."
     },
     "/publications/{pubId}": {
       "schema": { "$ref": "#/entities/Publication" },

@@ -4,7 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 
-export type UserRole = 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
+export type UserRole = 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
 
 export interface FirebaseAppletConfig {
   projectId: string;
@@ -109,7 +109,8 @@ export async function firestoreQueryByFieldAsCaller(
   collectionId: string,
   fieldPath: string,
   value: string,
-  idToken: string
+  idToken: string,
+  limit = 100
 ): Promise<Record<string, any>[]> {
   const { projectId, firestoreDatabaseId } = loadFirebaseConfig();
   const dbId = firestoreDatabaseId || '(default)';
@@ -131,7 +132,7 @@ export async function firestoreQueryByFieldAsCaller(
             value: { stringValue: value },
           },
         },
-        limit: 10,
+        limit,
       },
     }),
   });
@@ -180,7 +181,9 @@ export async function verifyBearerCaller(req: Request): Promise<CallerContext> {
 
   const isBootstrapAdmin = email === BOOTSTRAP_ADMIN_EMAIL && emailVerified;
   const isActive = isBootstrapAdmin || Boolean(userDoc && userDoc.status === 'active');
-  const isAdmin = isBootstrapAdmin || Boolean(userDoc && userDoc.status === 'active' && userDoc.isAdmin === true);
+  const isAdmin =
+    isBootstrapAdmin ||
+    Boolean(userDoc && userDoc.status === 'active' && (userDoc.isAdmin === true || userDoc.role === 'L0'));
 
   return {
     uid,
@@ -190,7 +193,7 @@ export async function verifyBearerCaller(req: Request): Promise<CallerContext> {
     isBootstrapAdmin,
     isAdmin,
     isActive,
-    role: (userDoc?.role as UserRole) || (isBootstrapAdmin ? 'L1' : 'L5'),
+    role: (userDoc?.role as UserRole) || (isBootstrapAdmin ? 'L0' : 'L5'),
     staffId: String(userDoc?.staffId || ''),
     centerId: String(userDoc?.centerId || ''),
     departmentId: String(userDoc?.departmentId || ''),
@@ -204,8 +207,8 @@ export async function requireVerifiedAuth(req: Request, res: Response, next: Nex
     next();
   } catch (err: any) {
     const msg = err?.message || 'Pengesahan gagal.';
-    const status = msg.startsWith('FORBIDDEN') ? 403 : 401;
-    res.status(status).json({ error: msg });
+    // Return 401 JSON so reverse proxy error_page 403 never replaces JSON with HTML
+    res.status(401).json({ error: msg, code: msg.startsWith('FORBIDDEN') ? 'FORBIDDEN' : 'UNAUTHORIZED' });
   }
 }
 
@@ -213,7 +216,7 @@ export async function requireActiveStaff(req: Request, res: Response, next: Next
   try {
     const caller = await verifyBearerCaller(req);
     if (!caller.isActive) {
-      res.status(403).json({ error: 'Akaun anda belum diluluskan atau tidak aktif.' });
+      res.status(401).json({ error: 'Akaun anda belum diluluskan atau tidak aktif.', code: 'FORBIDDEN' });
       return;
     }
     req.caller = caller;
@@ -228,7 +231,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   try {
     const caller = await verifyBearerCaller(req);
     if (!caller.isAdmin) {
-      res.status(403).json({ error: 'Akses ditolak. Peranan Admin diperlukan.' });
+      res.status(401).json({ error: 'Akses ditolak. Peranan Admin diperlukan.', code: 'FORBIDDEN' });
       return;
     }
     req.caller = caller;
@@ -237,6 +240,55 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     const msg = err?.message || 'Pengesahan gagal.';
     res.status(401).json({ error: msg });
   }
+}
+
+async function findScopedRecordByDriveFileId(
+  collectionId: string,
+  matchFields: string[],
+  driveFileId: string,
+  caller: CallerContext,
+  mode: 'read' | 'write',
+  allowDirectoryActiveRead = false
+): Promise<Record<string, any> | null> {
+  const matchesTarget = (doc: Record<string, any>) =>
+    matchFields.some((f) => String(doc[f] || '') === driveFileId);
+
+  // 1. Query by caller's staffId (allowed by Firestore rules allow list)
+  if (caller.staffId) {
+    const byStaff = await firestoreQueryByFieldAsCaller(collectionId, 'staffId', caller.staffId, caller.idToken, 200);
+    const found = byStaff.find(matchesTarget);
+    if (found) return found;
+  }
+
+  // 2. Query by caller's uid (allowed by Firestore rules allow list)
+  const byUid = await firestoreQueryByFieldAsCaller(collectionId, 'uid', caller.uid, caller.idToken, 200);
+  const foundByUid = byUid.find(matchesTarget);
+  if (foundByUid) return foundByUid;
+
+  if (mode === 'read') {
+    // 3. L1 center-scoped read
+    if (caller.role === 'L1' && caller.centerId) {
+      const byCenter = await firestoreQueryByFieldAsCaller(collectionId, 'centerId', caller.centerId, caller.idToken, 200);
+      const foundByCenter = byCenter.find(matchesTarget);
+      if (foundByCenter) return foundByCenter;
+    }
+
+    // 4. L2 department-scoped read
+    if (caller.role === 'L2' && caller.departmentId) {
+      const byDept = await firestoreQueryByFieldAsCaller(collectionId, 'departmentId', caller.departmentId, caller.idToken, 200);
+      const foundByDept = byDept.find(matchesTarget);
+      if (foundByDept) return foundByDept;
+    }
+
+    // 5. Directory read for active display profile photos (L3/L4)
+    if (allowDirectoryActiveRead && (caller.role === 'L3' || caller.role === 'L4')) {
+      const activeDocs = await firestoreQueryByFieldAsCaller(collectionId, 'status', 'active', caller.idToken, 200);
+      const foundActive = activeDocs.find(matchesTarget);
+      if (foundActive) return foundActive;
+    }
+  }
+
+  return null;
 }
 
 export async function verifyDriveFileAccess(
@@ -248,82 +300,124 @@ export async function verifyDriveFileAccess(
     return { allowed: true, recordType: 'admin' };
   }
 
-  // Check certificates
-  const certs = await firestoreQueryByFieldAsCaller('certificates', 'driveFileId', driveFileId, caller.idToken);
-  if (certs.length > 0) {
-    const cert = certs[0];
+  // Check certificates using rule-compliant scoped queries
+  const cert = await findScopedRecordByDriveFileId('certificates', ['driveFileId'], driveFileId, caller, mode);
+  if (cert) {
     if (mode === 'write') {
+      const writeAllowed = cert.uid === caller.uid || (Boolean(caller.staffId) && cert.staffId === caller.staffId);
       return {
-        allowed: cert.uid === caller.uid,
+        allowed: writeAllowed,
         recordType: 'certificate',
-        ownerUid: cert.uid,
-        staffId: cert.staffId,
+        ownerUid: String(cert.uid || ''),
+        staffId: String(cert.staffId || ''),
       };
     }
     const readAllowed =
       cert.uid === caller.uid ||
+      (Boolean(caller.staffId) && cert.staffId === caller.staffId) ||
       (caller.role === 'L1' && cert.centerId === caller.centerId) ||
       (caller.role === 'L2' && cert.departmentId === caller.departmentId);
-    return { allowed: readAllowed, recordType: 'certificate', ownerUid: cert.uid, staffId: cert.staffId };
+    return {
+      allowed: readAllowed,
+      recordType: 'certificate',
+      ownerUid: String(cert.uid || ''),
+      staffId: String(cert.staffId || ''),
+    };
+  }
+
+  // Fallback check: competency certificate linked directly on caller's competencies record
+  if (caller.staffId) {
+    const compDoc = await firestoreGetAsCaller(`competencies/${caller.staffId}`, caller.idToken).catch(() => null);
+    if (compDoc && Array.isArray(compDoc.items)) {
+      const hasMatch = compDoc.items.some(
+        (it: any) => it && String(it.certificateDriveFileId || '') === driveFileId
+      );
+      if (hasMatch) {
+        return {
+          allowed: true,
+          recordType: 'competency_certificate',
+          ownerUid: String(compDoc.uid || caller.uid),
+          staffId: caller.staffId,
+        };
+      }
+    }
   }
 
   // Check display profile photos
-  const displayPhotos = await firestoreQueryByFieldAsCaller(
+  const displayPhoto = await findScopedRecordByDriveFileId(
     'profile_photos',
-    'displayDriveFileId',
+    ['displayDriveFileId'],
     driveFileId,
-    caller.idToken
+    caller,
+    mode,
+    true
   );
-  if (displayPhotos.length > 0) {
-    const photo = displayPhotos[0];
+  if (displayPhoto) {
     if (mode === 'write') {
-      return { allowed: photo.uid === caller.uid, recordType: 'profile_photo', ownerUid: photo.uid, staffId: photo.staffId };
+      const writeAllowed =
+        displayPhoto.uid === caller.uid || (Boolean(caller.staffId) && displayPhoto.staffId === caller.staffId);
+      return {
+        allowed: writeAllowed,
+        recordType: 'profile_photo',
+        ownerUid: String(displayPhoto.uid || ''),
+        staffId: String(displayPhoto.staffId || ''),
+      };
     }
     const readAllowed =
-      photo.uid === caller.uid ||
-      (caller.role === 'L1' && photo.centerId === caller.centerId) ||
-      (caller.role === 'L2' && photo.departmentId === caller.departmentId) ||
-      ((caller.role === 'L3' || caller.role === 'L4') && photo.status === 'active');
-    return { allowed: readAllowed, recordType: 'profile_photo', ownerUid: photo.uid, staffId: photo.staffId };
+      displayPhoto.uid === caller.uid ||
+      (Boolean(caller.staffId) && displayPhoto.staffId === caller.staffId) ||
+      (caller.role === 'L1' && displayPhoto.centerId === caller.centerId) ||
+      (caller.role === 'L2' && displayPhoto.departmentId === caller.departmentId) ||
+      ((caller.role === 'L3' || caller.role === 'L4') && displayPhoto.status === 'active');
+    return {
+      allowed: readAllowed,
+      recordType: 'profile_photo',
+      ownerUid: String(displayPhoto.uid || ''),
+      staffId: String(displayPhoto.staffId || ''),
+    };
   }
 
-  // Check original profile photos (strictly owner or Admin or L1/L2 in scope)
-  const originalPhotos = await firestoreQueryByFieldAsCaller(
+  // Check original profile photos (strictly owner or Admin)
+  const originalPhoto = await findScopedRecordByDriveFileId(
     'profile_photos',
-    'originalDriveFileId',
+    ['originalDriveFileId'],
     driveFileId,
-    caller.idToken
+    caller,
+    mode
   );
-  if (originalPhotos.length > 0) {
-    const photo = originalPhotos[0];
-    if (mode === 'write') {
-      return { allowed: photo.uid === caller.uid, recordType: 'profile_photo_original', ownerUid: photo.uid, staffId: photo.staffId };
-    }
+  if (originalPhoto) {
+    const isOwner =
+      originalPhoto.uid === caller.uid || (Boolean(caller.staffId) && originalPhoto.staffId === caller.staffId);
     return {
-      allowed: photo.uid === caller.uid,
+      allowed: isOwner,
       recordType: 'profile_photo_original',
-      ownerUid: photo.uid,
-      staffId: photo.staffId,
+      ownerUid: String(originalPhoto.uid || ''),
+      staffId: String(originalPhoto.staffId || ''),
     };
   }
 
   // Check generated profiles PDFs
-  const generated = await firestoreQueryByFieldAsCaller(
-    'generated_profiles',
-    'driveFileId',
-    driveFileId,
-    caller.idToken
-  );
-  if (generated.length > 0) {
-    const gen = generated[0];
+  const gen = await findScopedRecordByDriveFileId('generated_profiles', ['driveFileId'], driveFileId, caller, mode);
+  if (gen) {
     if (mode === 'write') {
-      return { allowed: gen.uid === caller.uid, recordType: 'generated_profile', ownerUid: gen.uid, staffId: gen.staffId };
+      return {
+        allowed: gen.uid === caller.uid,
+        recordType: 'generated_profile',
+        ownerUid: String(gen.uid || ''),
+        staffId: String(gen.staffId || ''),
+      };
     }
     const readAllowed =
       gen.uid === caller.uid ||
+      (Boolean(caller.staffId) && gen.staffId === caller.staffId) ||
       (caller.role === 'L1' && gen.centerId === caller.centerId) ||
       (caller.role === 'L2' && gen.departmentId === caller.departmentId);
-    return { allowed: readAllowed, recordType: 'generated_profile', ownerUid: gen.uid, staffId: gen.staffId };
+    return {
+      allowed: readAllowed,
+      recordType: 'generated_profile',
+      ownerUid: String(gen.uid || ''),
+      staffId: String(gen.staffId || ''),
+    };
   }
 
   return { allowed: false };

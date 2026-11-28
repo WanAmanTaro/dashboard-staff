@@ -3,10 +3,12 @@ import {
   Award,
   Building2,
   Camera,
+  Check,
   CheckCircle2,
   Cloud,
   Database,
   Download,
+  Edit3,
   Eye,
   FileSpreadsheet,
   FolderCog,
@@ -26,6 +28,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DriveImage } from '../components/DriveImage';
@@ -33,11 +36,16 @@ import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import {
   CERTIFICATE_CATEGORIES,
-  DEFAULT_COMPETENCY_CATEGORIES,
+  DEFAULT_APPLICATION_SKILL_CATEGORIES,
   DEFAULT_EXPERTISE_CATEGORIES,
+  DEFAULT_IAB_MODULES,
+  DEFAULT_INSTITUTION_CATEGORIES,
+  DEFAULT_KNOWLEDGE_SKILL_CATEGORIES,
+  DEFAULT_PUBLICATION_YEARS,
   ROLE_LABELS,
   ROLE_SHORT_LABELS,
   formatBytes,
+  isCountableStaff,
 } from '../lib/constants';
 import {
   disconnectDriveApi,
@@ -83,6 +91,7 @@ interface AdminPageProps {
   organizations: OrganizationCenter[];
   departments: Department[];
   onInspectProfile: (staffId: string) => void;
+  onSystemSettingsUpdated?: () => Promise<void> | void;
 }
 
 type AdminSection =
@@ -142,6 +151,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   organizations,
   departments,
   onInspectProfile,
+  onSystemSettingsUpdated,
 }) => {
   const { userAccount } = useAuth();
   const { showToast } = useToast();
@@ -168,7 +178,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   } | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // (1) Invite / Edit User state
+  // (1) Invite / Edit User state (Popup modals)
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     email: '',
     fullName: '',
@@ -181,7 +192,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [userSearch, setUserSearch] = useState('');
 
-  // (3) Organization form state
+  // (3) Organization form state (Popup modal)
+  const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [orgForm, setOrgForm] = useState({
     id: '',
     code: '',
@@ -193,7 +205,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     isNew: true,
   });
 
-  // (4) Department form state
+  // (4) Department form state (Popup modal)
+  const [deptModalOpen, setDeptModalOpen] = useState(false);
   const [deptForm, setDeptForm] = useState({
     id: '',
     centerId: organizations[0]?.id || '',
@@ -214,9 +227,33 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // (9) Categories state
   const [expCategories, setExpCategories] = useState<string[]>(DEFAULT_EXPERTISE_CATEGORIES);
-  const [compCategories, setCompCategories] = useState<string[]>(DEFAULT_COMPETENCY_CATEGORIES);
+  const [appSkillCategories, setAppSkillCategories] = useState<string[]>(
+    DEFAULT_APPLICATION_SKILL_CATEGORIES
+  );
+  const [knowSkillCategories, setKnowSkillCategories] = useState<string[]>(
+    DEFAULT_KNOWLEDGE_SKILL_CATEGORIES
+  );
+  const [institutionCategories, setInstitutionCategories] = useState<string[]>(
+    DEFAULT_INSTITUTION_CATEGORIES
+  );
+  const [publicationYears, setPublicationYears] = useState<string[]>(DEFAULT_PUBLICATION_YEARS);
+  const [iabModules, setIabModules] = useState<string[]>(DEFAULT_IAB_MODULES);
+
   const [newExpCat, setNewExpCat] = useState('');
-  const [newCompCat, setNewCompCat] = useState('');
+  const [newAppSkillCat, setNewAppSkillCat] = useState('');
+  const [newKnowSkillCat, setNewKnowSkillCat] = useState('');
+  const [newInstitutionCat, setNewInstitutionCat] = useState('');
+  const [newPubYear, setNewPubYear] = useState('');
+  const [newIabModule, setNewIabModule] = useState('');
+
+  const [editingAppIdx, setEditingAppIdx] = useState<number | null>(null);
+  const [editingAppVal, setEditingAppVal] = useState('');
+  const [editingKnowIdx, setEditingKnowIdx] = useState<number | null>(null);
+  const [editingKnowVal, setEditingKnowVal] = useState('');
+  const [editingInstIdx, setEditingInstIdx] = useState<number | null>(null);
+  const [editingInstVal, setEditingInstVal] = useState('');
+  const [editingIabModIdx, setEditingIabModIdx] = useState<number | null>(null);
+  const [editingIabModVal, setEditingIabModVal] = useState('');
 
   // (10) System Settings state
   const [systemName, setSystemName] = useState('Sistem Pengurusan Modal Insan dan Kepakaran IAB');
@@ -246,7 +283,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           setSystemName(s.systemName);
           setInstitutionName(s.institutionName);
           if (s.expertiseCategories?.length) setExpCategories(s.expertiseCategories);
-          if (s.competencyCategories?.length) setCompCategories(s.competencyCategories);
+          if (s.applicationSkillCategories?.length) {
+            setAppSkillCategories(s.applicationSkillCategories);
+          }
+          if (s.knowledgeSkillCategories?.length) {
+            setKnowSkillCategories(s.knowledgeSkillCategories);
+          }
+          if (s.institutionCategories?.length) {
+            setInstitutionCategories(s.institutionCategories);
+          }
+          if (s.publicationYears?.length) {
+            setPublicationYears(s.publicationYears);
+          }
+          if (s.iabModules?.length) {
+            setIabModules(s.iabModules);
+          }
         }
       })
       .catch(() => {});
@@ -330,12 +381,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         fullName: inviteForm.fullName,
         staffId: safeStaffId,
         role: inviteForm.role,
-        isAdmin: inviteForm.isAdmin,
+        isAdmin: inviteForm.role === 'L0' ? true : inviteForm.isAdmin,
         centerId: inviteForm.centerId,
         departmentId: inviteForm.departmentId,
       });
       showToast('success', `Jemputan rasmi untuk ${inviteForm.email} (${safeStaffId}) berjaya didaftarkan.`);
       setInviteForm((prev) => ({ ...prev, email: '', fullName: '', staffId: '' }));
+      setInviteModalOpen(false);
     } catch (err: any) {
       showToast('error', err?.message || 'Gagal mendaftar jemputan.');
     }
@@ -445,6 +497,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         status: 'active',
         isNew: true,
       });
+      setOrgModalOpen(false);
     } catch (err: any) {
       showToast('error', err?.message || 'Gagal menyimpan rekod pusat.');
     }
@@ -481,6 +534,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         status: 'active',
         isNew: true,
       });
+      setDeptModalOpen(false);
     } catch (err: any) {
       showToast('error', err?.message || 'Gagal menyimpan rekod jabatan.');
     }
@@ -492,7 +546,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         systemName: systemName.trim(),
         institutionName: institutionName.trim(),
         expertiseCategories: expCategories,
-        competencyCategories: compCategories,
+        competencyCategories: Array.from(new Set([...appSkillCategories, ...knowSkillCategories])),
+        applicationSkillCategories: appSkillCategories,
+        knowledgeSkillCategories: knowSkillCategories,
+        institutionCategories,
+        publicationYears,
+        iabModules,
       });
       if (driveStatus) {
         await syncDriveSettingsMetadata({
@@ -508,6 +567,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           maxCertSizeMb: Number(maxCertSizeMb) || 15,
         });
       }
+      await onSystemSettingsUpdated?.();
       showToast('success', 'Tetapan sistem dan katalog kepakaran berjaya disimpan.');
     } catch (err: any) {
       showToast('error', err?.message || 'Gagal menyimpan tetapan sistem.');
@@ -604,6 +664,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
   };
 
+  const countableUsers = useMemo(
+    () => users.filter((u) => u.role !== 'L0'),
+    [users]
+  );
+
+  const countableProfiles = useMemo(
+    () => profiles.filter((p) => isCountableStaff(p)),
+    [profiles]
+  );
+
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
     return users.filter(
@@ -617,7 +687,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   const filteredProfiles = useMemo(() => {
     const q = profileSearch.trim().toLowerCase();
-    return profiles.filter(
+    return countableProfiles.filter(
       (p) =>
         !q ||
         p.fullName.toLowerCase().includes(q) ||
@@ -625,7 +695,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         p.departmentName.toLowerCase().includes(q) ||
         p.primaryExpertise.toLowerCase().includes(q)
     );
-  }, [profiles, profileSearch]);
+  }, [countableProfiles, profileSearch]);
 
   const filteredCerts = useMemo(() => {
     const q = certSearch.trim().toLowerCase();
@@ -661,13 +731,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   }, [auditLogs, auditSearch, auditOutcomeFilter]);
 
   const monitoredProfiles = useMemo(() => {
-    return profiles.filter((p) => {
+    return countableProfiles.filter((p) => {
       if (monitoringFilter === 'INCOMPLETE') return p.completionPercent < 80;
       if (monitoringFilter === 'NO_PHOTO') return !p.hasPhoto;
       if (monitoringFilter === 'COMPLETE') return p.completionPercent >= 80;
       return true;
     });
-  }, [profiles, monitoringFilter]);
+  }, [countableProfiles, monitoringFilter]);
 
   if (!userAccount?.isAdmin) {
     return (
@@ -696,17 +766,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         <div className="grid grid-cols-3 gap-4 shrink-0 text-center">
           <div className="bg-white/10 rounded-lg px-4 py-2.5">
             <p className="text-xs text-slate-300">Pengguna</p>
-            <p className="text-lg font-bold font-mono-tabular">{users.length}</p>
+            <p className="text-lg font-bold font-mono-tabular">{countableUsers.length}</p>
           </div>
           <div className="bg-white/10 rounded-lg px-4 py-2.5">
             <p className="text-xs text-slate-300">Menunggu</p>
             <p className="text-lg font-bold font-mono-tabular text-[#F5D076]">
-              {users.filter((u) => u.status === 'pending').length}
+              {countableUsers.filter((u) => u.status === 'pending').length}
             </p>
           </div>
           <div className="bg-white/10 rounded-lg px-4 py-2.5">
             <p className="text-xs text-slate-300">Profil Staf</p>
-            <p className="text-lg font-bold font-mono-tabular">{profiles.length}</p>
+            <p className="text-lg font-bold font-mono-tabular">{countableProfiles.length}</p>
           </div>
         </div>
       </div>
@@ -741,259 +811,36 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           {/* 1. USER MANAGEMENT */}
           {section === 'users' && (
             <div className="space-y-6">
-              {/* Invite / Pre-approve User */}
-              <form
-                onSubmit={handleInviteSubmit}
-                className="bg-white border border-slate-200 rounded-xl p-6 space-y-4"
-              >
-                <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-                  <UserPlus className="w-5 h-5 text-[#0B1F3B]" />
-                  <div>
-                    <h3 className="text-base font-bold text-[#0B1F3B]">
-                      Daftar & Jemput Pengguna Rasmi
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Pengguna yang dijemput akan diaktifkan serta-merta apabila log masuk menggunakan emel berdaftar.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Emel Rasmi *</label>
-                    <input
-                      type="email"
-                      required
-                      value={inviteForm.email}
-                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                      placeholder="pegawai@iab.edu.my"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Penuh *</label>
-                    <input
-                      type="text"
-                      required
-                      value={inviteForm.fullName}
-                      onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
-                      placeholder="Dr. / En. / Pn. Nama"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">ID Staf (A-Z, 0-9, -) *</label>
-                    <input
-                      type="text"
-                      required
-                      value={inviteForm.staffId}
-                      onChange={(e) => setInviteForm({ ...inviteForm, staffId: e.target.value })}
-                      placeholder="IAB-STF-0102"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono-tabular"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Peranan (RBAC)</label>
-                    <select
-                      value={inviteForm.role}
-                      onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as UserRole })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
-                    >
-                      {(['L1', 'L2', 'L3', 'L4', 'L5'] as UserRole[]).map((r) => (
-                        <option key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat</label>
-                    <select
-                      value={inviteForm.centerId}
-                      onChange={(e) => {
-                        const cid = e.target.value;
-                        const firstDept = departments.find((d) => d.centerId === cid)?.id || '';
-                        setInviteForm({ ...inviteForm, centerId: cid, departmentId: firstDept });
-                      }}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
-                    >
-                      {organizations.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
-                    <select
-                      value={inviteForm.departmentId}
-                      onChange={(e) => setInviteForm({ ...inviteForm, departmentId: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
-                    >
-                      {departments
-                        .filter((d) => !inviteForm.centerId || d.centerId === inviteForm.centerId)
-                        .map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={inviteForm.isAdmin}
-                      onChange={(e) => setInviteForm({ ...inviteForm, isAdmin: e.target.checked })}
-                      className="rounded border-slate-300"
-                    />
-                    Beri hak Pentadbir Sistem (Admin) tambahan
-                  </label>
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg whitespace-nowrap shrink-0"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Daftar Jemputan
-                  </button>
-                </div>
-              </form>
-
               {/* Pending + Active Users Table */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h3 className="text-base font-bold text-[#0B1F3B]">Senarai Akaun Pengguna Sistem</h3>
                     <p className="text-xs text-slate-500">
-                      Luluskan pengguna berstatus menunggu (pending), gantung atau kemas kini penempatan staf.
+                      Luluskan pengguna berstatus menunggu (pending), gantung, atau kemas kini penempatan staf. Peranan L0 — Admin tidak dikira dalam bilangan staf dan pengguna.
                     </p>
                   </div>
-                  <div className="relative w-full sm:w-64">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    <input
-                      type="text"
-                      value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                      placeholder="Cari nama, emel, ID staf..."
-                      className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg"
-                    />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-full sm:w-56">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                        placeholder="Cari nama, emel, ID staf..."
+                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInviteModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg whitespace-nowrap shrink-0"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Tambah Pengguna
+                    </button>
                   </div>
                 </div>
-
-                {editingUser && (
-                  <form
-                    onSubmit={handleSaveUserEdit}
-                    className="p-4 rounded-xl bg-slate-50 border border-[#C69738] space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-bold text-[#0B1F3B]">
-                        Kemas Kini Akaun: {editingUser.email}
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => setEditingUser(null)}
-                        className="text-xs text-slate-600 hover:text-slate-900"
-                      >
-                        Tutup
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Paparan</label>
-                        <input
-                          type="text"
-                          required
-                          value={editingUser.displayName}
-                          onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">ID Staf</label>
-                        <input
-                          type="text"
-                          required
-                          value={editingUser.staffId}
-                          onChange={(e) => setEditingUser({ ...editingUser, staffId: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white font-mono-tabular"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
-                        <select
-                          value={editingUser.status}
-                          onChange={(e) =>
-                            setEditingUser({ ...editingUser, status: e.target.value as AccountStatus })
-                          }
-                          className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                        >
-                          <option value="pending">pending</option>
-                          <option value="active">active</option>
-                          <option value="suspended">suspended</option>
-                          <option value="inactive">inactive</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat</label>
-                        <select
-                          value={editingUser.centerId}
-                          onChange={(e) => setEditingUser({ ...editingUser, centerId: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                        >
-                          <option value="">-- Pilih Pusat --</option>
-                          {organizations.map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
-                        <select
-                          value={editingUser.departmentId}
-                          onChange={(e) => setEditingUser({ ...editingUser, departmentId: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                        >
-                          <option value="">-- Pilih Jabatan --</option>
-                          {departments
-                            .filter((d) => !editingUser.centerId || d.centerId === editingUser.centerId)
-                            .map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.name}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Peranan</label>
-                        <select
-                          value={editingUser.role}
-                          onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}
-                          className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-                        >
-                          {(['L1', 'L2', 'L3', 'L4', 'L5'] as UserRole[]).map((r) => (
-                            <option key={r} value={r}>
-                              {ROLE_LABELS[r]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        Simpan Akaun
-                      </button>
-                    </div>
-                  </form>
-                )}
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
@@ -1111,7 +958,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <div>
                 <h3 className="text-base font-bold text-[#0B1F3B]">Pengurusan Peranan & Kawalan Akses (RBAC)</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  L1 (Ketua Pusat), L2 (Ketua Jabatan), L3 (Pensyarah), L4 (Pegawai Bukan Pensyarah), L5 (Staf Sokongan), serta hak Admin.
+                  L0 (Admin — tidak dikira dalam bilangan staf dan pengguna), L1 (Ketua Pusat), L2 (Ketua Jabatan), L3 (Pensyarah), L4 (Pegawai Bukan Pensyarah), L5 (Staf Sokongan).
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -1143,16 +990,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                           <select
                             aria-label={`Pilih peranan untuk ${u.displayName}`}
                             value={u.role}
-                            onChange={(e) => handleRoleChange(u, e.target.value as UserRole, u.isAdmin)}
+                            onChange={(e) => {
+                              const nextRole = e.target.value as UserRole;
+                              handleRoleChange(u, nextRole, nextRole === 'L0' ? true : u.isAdmin);
+                            }}
                             className="px-2 py-1 text-xs border border-slate-300 rounded bg-white"
                           >
-                            {(['L1', 'L2', 'L3', 'L4', 'L5'] as UserRole[]).map((r) => (
+                            {(['L0', 'L1', 'L2', 'L3', 'L4', 'L5'] as UserRole[]).map((r) => (
                               <option key={r} value={r}>
                                 {r}
                               </option>
                             ))}
                           </select>
-                          {u.uid !== userAccount.uid && (
+                          {u.uid !== userAccount.uid && u.role !== 'L0' && (
                             <button
                               type="button"
                               onClick={() => handleRoleChange(u, u.role, !u.isAdmin)}
@@ -1176,256 +1026,123 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
           {/* 3. ORGANIZATION MANAGEMENT */}
           {section === 'organizations' && (
-            <div className="space-y-6">
-              <form
-                onSubmit={handleSaveOrg}
-                className="bg-white border border-slate-200 rounded-xl p-6 space-y-4"
-              >
-                <h3 className="text-base font-bold text-[#0B1F3B]">
-                  {orgForm.isNew ? 'Tambah Pusat Baharu' : `Kemas Kini Pusat: ${orgForm.name}`}
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Kod Pusat *</label>
-                    <input
-                      type="text"
-                      required
-                      value={orgForm.code}
-                      onChange={(e) => setOrgForm({ ...orgForm, code: e.target.value })}
-                      placeholder="IAB-INDUK"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Rasmi Pusat *</label>
-                    <input
-                      type="text"
-                      required
-                      value={orgForm.name}
-                      onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
-                      placeholder="Pusat Pengurusan dan Kepimpinan Pendidikan"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Ketua Pusat</label>
-                    <input
-                      type="text"
-                      value={orgForm.headName}
-                      onChange={(e) => setOrgForm({ ...orgForm, headName: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Lokasi / Kampus</label>
-                    <input
-                      type="text"
-                      value={orgForm.location}
-                      onChange={(e) => setOrgForm({ ...orgForm, location: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
-                    <select
-                      value={orgForm.status}
-                      onChange={(e) => setOrgForm({ ...orgForm, status: e.target.value as 'active' | 'inactive' })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
-                    >
-                      <option value="active">Aktif</option>
-                      <option value="inactive">Tidak Aktif</option>
-                    </select>
-                  </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-base font-bold text-[#0B1F3B]">
+                    Senarai Pusat & Organisasi ({organizations.length})
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Urus pusat dan ketua pusat di bawah struktur rasmi IAB.
+                  </p>
                 </div>
-                <div className="flex justify-end gap-2">
-                  {!orgForm.isNew && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrgForm({
+                      id: '',
+                      code: '',
+                      name: '',
+                      headName: '',
+                      headUid: '',
+                      location: 'Bandar Enstek, Nilai',
+                      status: 'active',
+                      isNew: true,
+                    });
+                    setOrgModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tambah Pusat
+                </button>
+              </div>
+              <div className="divide-y divide-slate-100 text-xs">
+                {organizations.map((o) => (
+                  <div key={o.id} className="py-3 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-bold text-[#0B1F3B]">
+                        {o.name} <span className="font-mono-tabular text-slate-500">({o.code})</span>
+                      </p>
+                      <p className="text-slate-600 mt-0.5">
+                        Ketua: {o.headName || 'Belum ditetapkan'} · Lokasi: {o.location || '-'}
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      onClick={() =>
-                        setOrgForm({
-                          id: '',
-                          code: '',
-                          name: '',
-                          headName: '',
-                          headUid: '',
-                          location: 'Bandar Enstek, Nilai',
-                          status: 'active',
-                          isNew: true,
-                        })
-                      }
-                      className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg"
+                      onClick={() => {
+                        setOrgForm({ ...o, isNew: false });
+                        setOrgModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-[#0B1F3B] bg-slate-100 hover:bg-slate-200 rounded-lg shrink-0"
                     >
-                      Batal Suntingan
+                      Ubah
                     </button>
-                  )}
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
-                  >
-                    <Save className="w-4 h-4" />
-                    Simpan Pusat
-                  </button>
-                </div>
-              </form>
-
-              <div className="bg-white border border-slate-200 rounded-xl p-6">
-                <h4 className="text-sm font-bold text-[#0B1F3B] mb-3">
-                  Senarai Pusat & Organisasi ({organizations.length})
-                </h4>
-                <div className="divide-y divide-slate-100 text-xs">
-                  {organizations.map((o) => (
-                    <div key={o.id} className="py-3 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-bold text-[#0B1F3B]">
-                          {o.name} <span className="font-mono-tabular text-slate-500">({o.code})</span>
-                        </p>
-                        <p className="text-slate-600 mt-0.5">
-                          Ketua: {o.headName || 'Belum ditetapkan'} · Lokasi: {o.location || '-'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setOrgForm({ ...o, isNew: false })}
-                        className="px-3 py-1.5 text-xs font-semibold text-[#0B1F3B] bg-slate-100 hover:bg-slate-200 rounded-lg shrink-0"
-                      >
-                        Ubah
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
           {/* 4. DEPARTMENT MANAGEMENT */}
           {section === 'departments' && (
-            <div className="space-y-6">
-              <form
-                onSubmit={handleSaveDept}
-                className="bg-white border border-slate-200 rounded-xl p-6 space-y-4"
-              >
-                <h3 className="text-base font-bold text-[#0B1F3B]">
-                  {deptForm.isNew ? 'Tambah Jabatan Baharu' : `Kemas Kini Jabatan: ${deptForm.name}`}
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat Induk *</label>
-                    <select
-                      required
-                      value={deptForm.centerId}
-                      onChange={(e) => setDeptForm({ ...deptForm, centerId: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
-                    >
-                      <option value="">-- Pilih Pusat --</option>
-                      {organizations.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Kod Jabatan *</label>
-                    <input
-                      type="text"
-                      required
-                      value={deptForm.code}
-                      onChange={(e) => setDeptForm({ ...deptForm, code: e.target.value })}
-                      placeholder="JKP"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Jabatan *</label>
-                    <input
-                      type="text"
-                      required
-                      value={deptForm.name}
-                      onChange={(e) => setDeptForm({ ...deptForm, name: e.target.value })}
-                      placeholder="Jabatan Kepimpinan Pendidikan"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Ketua Jabatan</label>
-                    <input
-                      type="text"
-                      value={deptForm.headName}
-                      onChange={(e) => setDeptForm({ ...deptForm, headName: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
-                    <select
-                      value={deptForm.status}
-                      onChange={(e) => setDeptForm({ ...deptForm, status: e.target.value as 'active' | 'inactive' })}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
-                    >
-                      <option value="active">Aktif</option>
-                      <option value="inactive">Tidak Aktif</option>
-                    </select>
-                  </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-base font-bold text-[#0B1F3B]">
+                    Senarai Jabatan ({departments.length})
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Urus jabatan di bawah setiap Pusat IAB.
+                  </p>
                 </div>
-                <div className="flex justify-end gap-2">
-                  {!deptForm.isNew && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDeptForm({
-                          id: '',
-                          centerId: organizations[0]?.id || '',
-                          code: '',
-                          name: '',
-                          headName: '',
-                          headUid: '',
-                          status: 'active',
-                          isNew: true,
-                        })
-                      }
-                      className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg"
-                    >
-                      Batal Suntingan
-                    </button>
-                  )}
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
-                  >
-                    <Save className="w-4 h-4" />
-                    Simpan Jabatan
-                  </button>
-                </div>
-              </form>
-
-              <div className="bg-white border border-slate-200 rounded-xl p-6">
-                <h4 className="text-sm font-bold text-[#0B1F3B] mb-3">
-                  Senarai Jabatan ({departments.length})
-                </h4>
-                <div className="divide-y divide-slate-100 text-xs">
-                  {departments.map((d) => {
-                    const center = organizations.find((o) => o.id === d.centerId);
-                    return (
-                      <div key={d.id} className="py-3 flex items-center justify-between gap-4">
-                        <div>
-                          <p className="font-bold text-[#0B1F3B]">
-                            {d.name} <span className="font-mono-tabular text-slate-500">({d.code})</span>
-                          </p>
-                          <p className="text-slate-600 mt-0.5">
-                            Pusat: {center?.name || d.centerId} · Ketua: {d.headName || 'Belum ditetapkan'}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setDeptForm({ ...d, isNew: false })}
-                          className="px-3 py-1.5 text-xs font-semibold text-[#0B1F3B] bg-slate-100 hover:bg-slate-200 rounded-lg shrink-0"
-                        >
-                          Ubah
-                        </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeptForm({
+                      id: '',
+                      centerId: organizations[0]?.id || '',
+                      code: '',
+                      name: '',
+                      headName: '',
+                      headUid: '',
+                      status: 'active',
+                      isNew: true,
+                    });
+                    setDeptModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tambah Jabatan
+                </button>
+              </div>
+              <div className="divide-y divide-slate-100 text-xs">
+                {departments.map((d) => {
+                  const center = organizations.find((o) => o.id === d.centerId);
+                  return (
+                    <div key={d.id} className="py-3 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-bold text-[#0B1F3B]">
+                          {d.name} <span className="font-mono-tabular text-slate-500">({d.code})</span>
+                        </p>
+                        <p className="text-slate-600 mt-0.5">
+                          Pusat: {center?.name || d.centerId} · Ketua: {d.headName || 'Belum ditetapkan'}
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeptForm({ ...d, isNew: false });
+                          setDeptModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-[#0B1F3B] bg-slate-100 hover:bg-slate-200 rounded-lg shrink-0"
+                      >
+                        Ubah
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1746,11 +1463,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </h3>
                 <p className="text-xs text-slate-500">
                   {photosAdmin.length} gambar berdaftar ·{' '}
-                  {profiles.filter((p) => !p.hasPhoto).length} pegawai belum memuat naik gambar profil.
+                  {countableProfiles.filter((p) => !p.hasPhoto).length} pegawai belum memuat naik gambar profil.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {profiles.map((p) => (
+                {countableProfiles.map((p) => (
                   <div
                     key={p.staffId}
                     className="p-3.5 rounded-lg border border-slate-200 flex items-center gap-3"
@@ -1780,19 +1497,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             </div>
           )}
 
-          {/* 9. EXPERTISE & COMPETENCY CATEGORIES */}
+          {/* 9. EXPERTISE, COMPETENCY & DROPLIST CATALOGS */}
           {section === 'categories' && (
             <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
               <div>
                 <h3 className="text-base font-bold text-[#0B1F3B]">
-                  Katalog Piawai Bidang Kepakaran & Kompetensi Digital / AI
+                  Katalog Piawai Dropdown &amp; Kompetensi Digital / AI
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Senarai ini mengawal pilihan dropdown dalam Borang Profil, Direktori Kepakaran dan Analisis Jurang Kapasiti.
+                  Senarai ini mengawal pilihan dropdown dalam Borang Profil (Tab D Institusi, Tab E Kepakaran, Tab F Kemahiran Aplikasi &amp; Pengetahuan, Tab H Tahun Penerbitan) dan Kompetensi IAB. Hanya Admin dibenarkan mengubah senarai ini.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Expertise Categories */}
                 <div className="space-y-3">
                   <h4 className="text-sm font-bold text-[#0B1F3B]">Bidang Kepakaran Utama ({expCategories.length})</h4>
@@ -1837,26 +1554,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   </div>
                 </div>
 
-                {/* Competency Categories */}
+                {/* Kemahiran Aplikasi Droplist */}
                 <div className="space-y-3">
                   <h4 className="text-sm font-bold text-[#0B1F3B]">
-                    Kompetensi Digital & AI ({compCategories.length})
+                    Kemahiran Aplikasi ({appSkillCategories.length})
                   </h4>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      value={newCompCat}
-                      onChange={(e) => setNewCompCat(e.target.value)}
-                      placeholder="Tambah kompetensi digital..."
+                      value={newAppSkillCat}
+                      onChange={(e) => setNewAppSkillCat(e.target.value)}
+                      placeholder="cth: Canva AI, NotebookLM..."
                       className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg"
                     />
                     <button
                       type="button"
                       onClick={() => {
-                        const val = newCompCat.trim();
-                        if (!val || compCategories.includes(val)) return;
-                        setCompCategories([...compCategories, val]);
-                        setNewCompCat('');
+                        const val = newAppSkillCat.trim();
+                        if (!val || appSkillCategories.includes(val)) return;
+                        setAppSkillCategories([...appSkillCategories, val]);
+                        setNewAppSkillCat('');
                       }}
                       className="px-3 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
                     >
@@ -1864,20 +1581,360 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     </button>
                   </div>
                   <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                    {compCategories.map((cat) => (
+                    {appSkillCategories.map((cat, idx) => (
                       <div
-                        key={cat}
+                        key={`${cat}-${idx}`}
                         className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
                       >
-                        <span>{cat}</span>
+                        {editingAppIdx === idx ? (
+                          <div className="flex-1 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingAppVal}
+                              onChange={(e) => setEditingAppVal(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs bg-white border border-slate-300 rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = editingAppVal.trim();
+                                if (!v) return;
+                                setAppSkillCategories(appSkillCategories.map((x, i) => (i === idx ? v : x)));
+                                setEditingAppIdx(null);
+                              }}
+                              className="text-emerald-700 hover:text-emerald-900"
+                              aria-label="Simpan"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span>{cat}</span>
+                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingAppIdx(idx);
+                              setEditingAppVal(cat);
+                            }}
+                            className="text-slate-400 hover:text-[#0B1F3B]"
+                            aria-label={`Edit ${cat}`}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAppSkillCategories(appSkillCategories.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-red-700"
+                            aria-label={`Padam ${cat}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Kemahiran Pengetahuan Droplist */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-[#0B1F3B]">
+                    Kemahiran Pengetahuan ({knowSkillCategories.length})
+                  </h4>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newKnowSkillCat}
+                      onChange={(e) => setNewKnowSkillCat(e.target.value)}
+                      placeholder="cth: Digital Leadership..."
+                      className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newKnowSkillCat.trim();
+                        if (!val || knowSkillCategories.includes(val)) return;
+                        setKnowSkillCategories([...knowSkillCategories, val]);
+                        setNewKnowSkillCat('');
+                      }}
+                      className="px-3 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
+                    >
+                      Tambah
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                    {knowSkillCategories.map((cat, idx) => (
+                      <div
+                        key={`${cat}-${idx}`}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                      >
+                        {editingKnowIdx === idx ? (
+                          <div className="flex-1 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingKnowVal}
+                              onChange={(e) => setEditingKnowVal(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs bg-white border border-slate-300 rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = editingKnowVal.trim();
+                                if (!v) return;
+                                setKnowSkillCategories(knowSkillCategories.map((x, i) => (i === idx ? v : x)));
+                                setEditingKnowIdx(null);
+                              }}
+                              className="text-emerald-700 hover:text-emerald-900"
+                              aria-label="Simpan"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span>{cat}</span>
+                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingKnowIdx(idx);
+                              setEditingKnowVal(cat);
+                            }}
+                            className="text-slate-400 hover:text-[#0B1F3B]"
+                            aria-label={`Edit ${cat}`}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setKnowSkillCategories(knowSkillCategories.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-red-700"
+                            aria-label={`Padam ${cat}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4 border-t border-slate-200">
+                {/* Senarai Institusi (Tab D) */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-[#0B1F3B]">
+                    Senarai Institusi Tab D ({institutionCategories.length})
+                  </h4>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newInstitutionCat}
+                      onChange={(e) => setNewInstitutionCat(e.target.value)}
+                      placeholder="cth: UMP / UTAR..."
+                      className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newInstitutionCat.trim();
+                        if (!val || institutionCategories.includes(val)) return;
+                        setInstitutionCategories([...institutionCategories, val]);
+                        setNewInstitutionCat('');
+                      }}
+                      className="px-3 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
+                    >
+                      Tambah
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {institutionCategories.map((inst, idx) => (
+                      <div
+                        key={`${inst}-${idx}`}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                      >
+                        {editingInstIdx === idx ? (
+                          <div className="flex-1 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingInstVal}
+                              onChange={(e) => setEditingInstVal(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs bg-white border border-slate-300 rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = editingInstVal.trim();
+                                if (!v) return;
+                                setInstitutionCategories(
+                                  institutionCategories.map((x, i) => (i === idx ? v : x))
+                                );
+                                setEditingInstIdx(null);
+                              }}
+                              className="text-emerald-700 hover:text-emerald-900"
+                              aria-label="Simpan"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span>{inst}</span>
+                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingInstIdx(idx);
+                              setEditingInstVal(inst);
+                            }}
+                            className="text-slate-400 hover:text-[#0B1F3B]"
+                            aria-label={`Edit ${inst}`}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setInstitutionCategories(institutionCategories.filter((_, i) => i !== idx))
+                            }
+                            className="text-slate-400 hover:text-red-700"
+                            aria-label={`Padam ${inst}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Senarai Tahun Penerbitan (Tab H) */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-[#0B1F3B]">
+                    Senarai Tahun Tab H ({publicationYears.length})
+                  </h4>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newPubYear}
+                      onChange={(e) => setNewPubYear(e.target.value)}
+                      placeholder="cth: 2031..."
+                      className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg font-mono-tabular"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newPubYear.trim();
+                        if (!val || publicationYears.includes(val)) return;
+                        setPublicationYears([...publicationYears, val]);
+                        setNewPubYear('');
+                      }}
+                      className="px-3 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
+                    >
+                      Tambah
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {publicationYears.map((yr, idx) => (
+                      <div
+                        key={`${yr}-${idx}`}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono-tabular"
+                      >
+                        <span>{yr}</span>
                         <button
                           type="button"
-                          onClick={() => setCompCategories(compCategories.filter((x) => x !== cat))}
+                          onClick={() =>
+                            setPublicationYears(publicationYears.filter((_, i) => i !== idx))
+                          }
                           className="text-slate-400 hover:text-red-700"
-                          aria-label={`Padam ${cat}`}
+                          aria-label={`Padam ${yr}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Senarai Modul IAB (Kompetensi IAB) */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-[#0B1F3B]">
+                    Senarai Modul IAB ({iabModules.length})
+                  </h4>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newIabModule}
+                      onChange={(e) => setNewIabModule(e.target.value)}
+                      placeholder="cth: Modul AI / NPQEL..."
+                      className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newIabModule.trim();
+                        if (!val || iabModules.includes(val)) return;
+                        setIabModules([...iabModules, val]);
+                        setNewIabModule('');
+                      }}
+                      className="px-3 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
+                    >
+                      Tambah
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {iabModules.map((mod, idx) => (
+                      <div
+                        key={`${mod}-${idx}`}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                      >
+                        {editingIabModIdx === idx ? (
+                          <div className="flex-1 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingIabModVal}
+                              onChange={(e) => setEditingIabModVal(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs bg-white border border-slate-300 rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = editingIabModVal.trim();
+                                if (!v) return;
+                                setIabModules(iabModules.map((x, i) => (i === idx ? v : x)));
+                                setEditingIabModIdx(null);
+                              }}
+                              className="text-emerald-700 hover:text-emerald-900"
+                              aria-label="Simpan"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span>{mod}</span>
+                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingIabModIdx(idx);
+                              setEditingIabModVal(mod);
+                            }}
+                            className="text-slate-400 hover:text-[#0B1F3B]"
+                            aria-label={`Edit ${mod}`}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIabModules(iabModules.filter((_, i) => i !== idx))}
+                            className="text-slate-400 hover:text-red-700"
+                            aria-label={`Padam ${mod}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2058,11 +2115,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 <div className="p-5 rounded-xl border border-slate-200 space-y-3">
                   <h4 className="text-sm font-bold text-[#0B1F3B]">Daftar Penuh Modal Insan & Kepakaran</h4>
                   <p className="text-xs text-slate-600">
-                    Mengandungi {profiles.length} rekod pegawai termasuk gred, jabatan, kelayakan tertinggi, kepakaran, dan kompetensi digital.
+                    Mengandungi {countableProfiles.length} rekod pegawai termasuk gred hakiki/KUP, jabatan, kelayakan tertinggi, kepakaran, dan kompetensi digital.
                   </p>
                   <button
                     type="button"
-                    onClick={() => exportStaffProfilesToExcel(profiles, 'IAB_Daftar_Modal_Insan')}
+                    onClick={() => exportStaffProfilesToExcel(countableProfiles, 'IAB_Daftar_Modal_Insan')}
                     className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
                   >
                     <Download className="w-4 h-4" />
@@ -2130,7 +2187,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
               </div>
 
-              {/* Explicit Admin-triggered UAT Dataset */}
+              {/* Explicit Admin-triggered UAT Dataset Seeder */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-3">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-[#C69738]" />
@@ -2233,6 +2290,518 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           )}
         </div>
       </div>
+
+      {/* Popup Modal: Daftar & Jemput Pengguna Rasmi */}
+      {inviteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setInviteModalOpen(false)}
+        >
+          <form
+            onSubmit={handleInviteSubmit}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200"
+          >
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <UserPlus className="w-5 h-5 text-[#0B1F3B]" />
+                <div>
+                  <h3 className="text-sm font-bold text-[#0B1F3B]">Daftar &amp; Jemput Pengguna Rasmi</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Pengguna yang dijemput akan diaktifkan serta-merta apabila log masuk menggunakan emel berdaftar.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(false)}
+                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg"
+                aria-label="Tutup borang jemputan"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Emel Rasmi *</label>
+                  <input
+                    type="email"
+                    required
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    placeholder="pegawai@iab.edu.my"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Penuh *</label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteForm.fullName}
+                    onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
+                    placeholder="Dr. / En. / Pn. Nama"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">ID Staf (A-Z, 0-9, -) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteForm.staffId}
+                    onChange={(e) => setInviteForm({ ...inviteForm, staffId: e.target.value })}
+                    placeholder="IAB-STF-0102"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono-tabular"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Peranan (RBAC)</label>
+                  <select
+                    value={inviteForm.role}
+                    onChange={(e) => {
+                      const nextRole = e.target.value as UserRole;
+                      setInviteForm({
+                        ...inviteForm,
+                        role: nextRole,
+                        isAdmin: nextRole === 'L0' ? true : inviteForm.isAdmin,
+                      });
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    {(['L0', 'L1', 'L2', 'L3', 'L4', 'L5'] as UserRole[]).map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat</label>
+                  <select
+                    value={inviteForm.centerId}
+                    onChange={(e) => {
+                      const cid = e.target.value;
+                      const firstDept = departments.find((d) => d.centerId === cid)?.id || '';
+                      setInviteForm({ ...inviteForm, centerId: cid, departmentId: firstDept });
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    {organizations.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
+                  <select
+                    value={inviteForm.departmentId}
+                    onChange={(e) => setInviteForm({ ...inviteForm, departmentId: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                  >
+                    {departments
+                      .filter((d) => !inviteForm.centerId || d.centerId === inviteForm.centerId)
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  disabled={inviteForm.role === 'L0'}
+                  checked={inviteForm.role === 'L0' ? true : inviteForm.isAdmin}
+                  onChange={(e) => setInviteForm({ ...inviteForm, isAdmin: e.target.checked })}
+                  className="rounded border-slate-300"
+                />
+                Beri hak Pentadbir Sistem (Admin) tambahan
+              </label>
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(false)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Daftar Jemputan
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Popup Modal: Kemas Kini Akaun Pengguna */}
+      {editingUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setEditingUser(null)}
+        >
+          <form
+            onSubmit={handleSaveUserEdit}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200"
+          >
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-bold text-[#0B1F3B]">
+                  Kemas Kini Akaun: {editingUser.email}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg"
+                aria-label="Tutup borang pengguna"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Paparan</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingUser.displayName}
+                    onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">ID Staf</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingUser.staffId}
+                    onChange={(e) => setEditingUser({ ...editingUser, staffId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white font-mono-tabular"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                  <select
+                    value={editingUser.status}
+                    onChange={(e) =>
+                      setEditingUser({ ...editingUser, status: e.target.value as AccountStatus })
+                    }
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="pending">pending</option>
+                    <option value="active">active</option>
+                    <option value="suspended">suspended</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat</label>
+                  <select
+                    value={editingUser.centerId}
+                    onChange={(e) => setEditingUser({ ...editingUser, centerId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="">-- Pilih Pusat --</option>
+                    {organizations.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan</label>
+                  <select
+                    value={editingUser.departmentId}
+                    onChange={(e) => setEditingUser({ ...editingUser, departmentId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="">-- Pilih Jabatan --</option>
+                    {departments
+                      .filter((d) => !editingUser.centerId || d.centerId === editingUser.centerId)
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Peranan</label>
+                  <select
+                    value={editingUser.role}
+                    onChange={(e) => {
+                      const nextRole = e.target.value as UserRole;
+                      setEditingUser({
+                        ...editingUser,
+                        role: nextRole,
+                        isAdmin: nextRole === 'L0' ? true : editingUser.isAdmin,
+                      });
+                    }}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  >
+                    {(['L0', 'L1', 'L2', 'L3', 'L4', 'L5'] as UserRole[]).map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  disabled={editingUser.role === 'L0'}
+                  checked={editingUser.role === 'L0' ? true : editingUser.isAdmin}
+                  onChange={(e) => setEditingUser({ ...editingUser, isAdmin: e.target.checked })}
+                  className="rounded border-slate-300"
+                />
+                Hak Pentadbir Sistem (Admin)
+              </label>
+            </div>
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] rounded-lg"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Simpan Akaun
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Popup Modal: Tambah / Ubah Pusat */}
+      {orgModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOrgModalOpen(false)}
+        >
+          <form
+            onSubmit={handleSaveOrg}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200"
+          >
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-[#0B1F3B]">
+                {orgForm.isNew ? 'Tambah Pusat Baharu' : `Kemas Kini Pusat: ${orgForm.name}`}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setOrgModalOpen(false)}
+                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg"
+                aria-label="Tutup borang pusat"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Kod Pusat *</label>
+                <input
+                  type="text"
+                  required
+                  value={orgForm.code}
+                  onChange={(e) => setOrgForm({ ...orgForm, code: e.target.value })}
+                  placeholder="IAB-INDUK"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Rasmi Pusat *</label>
+                <input
+                  type="text"
+                  required
+                  value={orgForm.name}
+                  onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
+                  placeholder="Pusat Pengurusan dan Kepimpinan Pendidikan"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Ketua Pusat</label>
+                <input
+                  type="text"
+                  value={orgForm.headName}
+                  onChange={(e) => setOrgForm({ ...orgForm, headName: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Lokasi / Kampus</label>
+                <input
+                  type="text"
+                  value={orgForm.location}
+                  onChange={(e) => setOrgForm({ ...orgForm, location: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                <select
+                  value={orgForm.status}
+                  onChange={(e) => setOrgForm({ ...orgForm, status: e.target.value as 'active' | 'inactive' })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                >
+                  <option value="active">Aktif</option>
+                  <option value="inactive">Tidak Aktif</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOrgModalOpen(false)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Simpan Pusat
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Popup Modal: Tambah / Ubah Jabatan */}
+      {deptModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDeptModalOpen(false)}
+        >
+          <form
+            onSubmit={handleSaveDept}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200"
+          >
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-[#0B1F3B]">
+                {deptForm.isNew ? 'Tambah Jabatan Baharu' : `Kemas Kini Jabatan: ${deptForm.name}`}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeptModalOpen(false)}
+                className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg"
+                aria-label="Tutup borang jabatan"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat Induk *</label>
+                <select
+                  required
+                  value={deptForm.centerId}
+                  onChange={(e) => setDeptForm({ ...deptForm, centerId: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                >
+                  <option value="">-- Pilih Pusat --</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Kod Jabatan *</label>
+                <input
+                  type="text"
+                  required
+                  value={deptForm.code}
+                  onChange={(e) => setDeptForm({ ...deptForm, code: e.target.value })}
+                  placeholder="JKP"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Jabatan *</label>
+                <input
+                  type="text"
+                  required
+                  value={deptForm.name}
+                  onChange={(e) => setDeptForm({ ...deptForm, name: e.target.value })}
+                  placeholder="Jabatan Kepimpinan Pendidikan"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Ketua Jabatan</label>
+                <input
+                  type="text"
+                  value={deptForm.headName}
+                  onChange={(e) => setDeptForm({ ...deptForm, headName: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+                <select
+                  value={deptForm.status}
+                  onChange={(e) => setDeptForm({ ...deptForm, status: e.target.value as 'active' | 'inactive' })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                >
+                  <option value="active">Aktif</option>
+                  <option value="inactive">Tidak Aktif</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeptModalOpen(false)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Simpan Jabatan
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {confirmState && (
         <ConfirmDialog

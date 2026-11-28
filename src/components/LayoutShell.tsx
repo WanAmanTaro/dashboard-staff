@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Award,
   BarChart3,
   Building2,
   FileText,
@@ -34,6 +35,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   welcome: 'Laman Utama',
   login: 'Log Masuk',
   profile: 'Profil Pegawai',
+  'kompetensi-iab': 'Kompetensi IAB',
   'center-dashboard': 'Dashboard Pusat',
   'department-dashboard': 'Dashboard Jabatan',
   'expertise-directory': 'Direktori Kepakaran',
@@ -60,6 +62,12 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
       id: 'profile',
       label: 'Profil Pegawai',
       icon: UserCircle2,
+      visible: true,
+    },
+    {
+      id: 'kompetensi-iab',
+      label: 'Kompetensi IAB',
+      icon: Award,
       visible: true,
     },
     {

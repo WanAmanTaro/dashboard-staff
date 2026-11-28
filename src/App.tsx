@@ -1,29 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { IabCrest } from './components/IabCrest';
 import { LayoutShell } from './components/LayoutShell';
 import { ToastProvider } from './components/Toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { isCountableStaff } from './lib/constants';
 import { testConnection } from './lib/firebase';
 import { AdminPage } from './pages/AdminPage';
 import { CapacityAnalysisPage } from './pages/CapacityAnalysisPage';
 import { CenterDashboardPage } from './pages/CenterDashboardPage';
 import { DepartmentDashboardPage } from './pages/DepartmentDashboardPage';
 import { ExpertiseDirectoryPage } from './pages/ExpertiseDirectoryPage';
+import { KompetensiIabPage } from './pages/KompetensiIabPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProfessionalProfilePdfPage } from './pages/ProfessionalProfilePdfPage';
 import { StaffProfilePage } from './pages/StaffProfilePage';
 import { WelcomePage } from './pages/WelcomePage';
 import {
+  getSystemSettings,
   subscribeDepartments,
   subscribeOrganizations,
+  subscribeScopedCompetencies,
+  subscribeScopedIabCompetencies,
   subscribeScopedStaffProfiles,
 } from './services/firestoreService';
 import type {
   AppRoute,
+  CompetencyRecord,
   Department,
+  IabCompetencyRecord,
   OrganizationCenter,
   StaffProfile,
+  SystemSetting,
   UserAccount,
 } from './types/iab';
 
@@ -37,6 +45,7 @@ function canAccessRoute(route: AppRoute, account: UserAccount): boolean {
   if (account.isAdmin) return true;
   switch (route) {
     case 'profile':
+    case 'kompetensi-iab':
     case 'professional-pdf':
       return true;
     case 'center-dashboard':
@@ -62,9 +71,21 @@ const AppContent: React.FC = () => {
   const [organizations, setOrganizations] = useState<OrganizationCenter[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [profiles, setProfiles] = useState<StaffProfile[]>([]);
+  const [competencyRecords, setCompetencyRecords] = useState<CompetencyRecord[]>([]);
+  const [iabCompetencyRecords, setIabCompetencyRecords] = useState<IabCompetencyRecord[]>([]);
+  const [sysSettings, setSysSettings] = useState<SystemSetting | null>(null);
 
   const [inspectStaffId, setInspectStaffId] = useState<string | null>(null);
   const [pdfStaffId, setPdfStaffId] = useState<string | null>(null);
+
+  const refreshSystemSettings = useCallback(async () => {
+    try {
+      const s = await getSystemSettings();
+      setSysSettings(s);
+    } catch {
+      // Ignore transient settings read failure
+    }
+  }, []);
 
   useEffect(() => {
     testConnection();
@@ -75,6 +96,9 @@ const AppContent: React.FC = () => {
       setOrganizations([]);
       setDepartments([]);
       setProfiles([]);
+      setCompetencyRecords([]);
+      setIabCompetencyRecords([]);
+      setSysSettings(null);
       setHasInitializedRoute(false);
       return;
     }
@@ -87,13 +111,32 @@ const AppContent: React.FC = () => {
     const unsubOrgs = subscribeOrganizations(setOrganizations);
     const unsubDepts = subscribeDepartments(setDepartments);
     const unsubProfiles = subscribeScopedStaffProfiles(userAccount, setProfiles);
+    const unsubCompetencies = subscribeScopedCompetencies(userAccount, setCompetencyRecords);
+    const unsubIabCompetencies = subscribeScopedIabCompetencies(userAccount, setIabCompetencyRecords);
+    refreshSystemSettings();
 
     return () => {
       unsubOrgs();
       unsubDepts();
       unsubProfiles();
+      unsubCompetencies();
+      unsubIabCompetencies();
     };
-  }, [userAccount?.uid, userAccount?.status, userAccount?.role, userAccount?.isAdmin, userAccount?.centerId, userAccount?.departmentId]);
+  }, [
+    userAccount?.uid,
+    userAccount?.status,
+    userAccount?.role,
+    userAccount?.isAdmin,
+    userAccount?.centerId,
+    userAccount?.departmentId,
+    refreshSystemSettings,
+  ]);
+
+  // L0 Admin tidak dikira dalam bilangan staf dan statistik organisasi
+  const countableProfiles = useMemo(
+    () => profiles.filter((p) => isCountableStaff(p)),
+    [profiles]
+  );
 
   if (loading) {
     return (
@@ -148,12 +191,25 @@ const AppContent: React.FC = () => {
           organizations={organizations}
           departments={departments}
           onClearTarget={() => setInspectStaffId(null)}
+          onSystemSettingsUpdated={refreshSystemSettings}
+        />
+      )}
+
+      {resolvedRoute === 'kompetensi-iab' && (
+        <KompetensiIabPage
+          userAccount={userAccount}
+          profiles={countableProfiles}
+          sysSettings={sysSettings}
+          onSystemSettingsUpdated={refreshSystemSettings}
         />
       )}
 
       {resolvedRoute === 'center-dashboard' && (
         <CenterDashboardPage
-          profiles={profiles}
+          profiles={countableProfiles}
+          competencyRecords={competencyRecords}
+          iabCompetencyRecords={iabCompetencyRecords}
+          sysSettings={sysSettings}
           organizations={organizations}
           departments={departments}
           onInspectProfile={handleInspectProfile}
@@ -162,7 +218,8 @@ const AppContent: React.FC = () => {
 
       {resolvedRoute === 'department-dashboard' && (
         <DepartmentDashboardPage
-          profiles={profiles}
+          profiles={countableProfiles}
+          competencyRecords={competencyRecords}
           departments={departments}
           onInspectProfile={handleInspectProfile}
         />
@@ -170,7 +227,9 @@ const AppContent: React.FC = () => {
 
       {resolvedRoute === 'expertise-directory' && (
         <ExpertiseDirectoryPage
-          profiles={profiles}
+          profiles={countableProfiles}
+          competencyRecords={competencyRecords}
+          sysSettings={sysSettings}
           departments={departments}
           onInspectProfile={handleInspectProfile}
           onGeneratePdfFor={handleGeneratePdfFor}
@@ -182,7 +241,12 @@ const AppContent: React.FC = () => {
       )}
 
       {resolvedRoute === 'capacity-analysis' && (
-        <CapacityAnalysisPage profiles={profiles} departments={departments} />
+        <CapacityAnalysisPage
+          profiles={countableProfiles}
+          competencyRecords={competencyRecords}
+          sysSettings={sysSettings}
+          departments={departments}
+        />
       )}
 
       {resolvedRoute === 'admin' && (
@@ -191,6 +255,7 @@ const AppContent: React.FC = () => {
           organizations={organizations}
           departments={departments}
           onInspectProfile={handleInspectProfile}
+          onSystemSettingsUpdated={refreshSystemSettings}
         />
       )}
     </LayoutShell>

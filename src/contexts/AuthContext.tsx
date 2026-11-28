@@ -182,7 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email,
           displayName: fbUser.displayName || email.split('@')[0],
           staffId,
-          role: isBootstrap ? 'L1' : 'L5',
+          role: isBootstrap ? 'L0' : 'L5',
           isAdmin: isBootstrap,
           status: isBootstrap ? 'active' : 'pending',
           centerId: isBootstrap ? 'CTR-IAB-INDUK' : '',

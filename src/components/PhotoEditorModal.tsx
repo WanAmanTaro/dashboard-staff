@@ -19,6 +19,8 @@ import { useToast } from './Toast';
 interface PhotoEditorModalProps {
   open: boolean;
   staffId: string;
+  staffName?: string;
+  staffEmail?: string;
   uid: string;
   centerId: string;
   departmentId: string;
@@ -31,6 +33,8 @@ interface PhotoEditorModalProps {
 export const PhotoEditorModal: React.FC<PhotoEditorModalProps> = ({
   open,
   staffId,
+  staffName,
+  staffEmail,
   uid,
   centerId,
   departmentId,
@@ -231,6 +235,8 @@ export const PhotoEditorModal: React.FC<PhotoEditorModalProps> = ({
 
       const uploadResult = await uploadStaffPhotosApi({
         staffId,
+        staffName,
+        staffEmail,
         originalFile: selectedFile,
         displayBlob,
       });

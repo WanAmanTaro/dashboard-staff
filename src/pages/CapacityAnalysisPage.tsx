@@ -15,14 +15,24 @@ import {
 import { AlertTriangle, Info } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  DEFAULT_COMPETENCY_CATEGORIES,
+  DEFAULT_APPLICATION_SKILL_CATEGORIES,
   DEFAULT_EXPERTISE_CATEGORIES,
+  DEFAULT_KNOWLEDGE_SKILL_CATEGORIES,
+  isCountableStaff,
 } from '../lib/constants';
 import { getSystemSettings } from '../services/firestoreService';
-import type { Department, StaffProfile, SystemSetting } from '../types/iab';
+import type {
+  CompetencyItem,
+  CompetencyRecord,
+  Department,
+  StaffProfile,
+  SystemSetting,
+} from '../types/iab';
 
 interface CapacityAnalysisPageProps {
   profiles: StaffProfile[];
+  competencyRecords?: CompetencyRecord[];
+  sysSettings?: SystemSetting | null;
   departments: Department[];
 }
 
@@ -30,26 +40,52 @@ const CHART_COLORS = ['#0B1F3B', '#C69738', '#1E40AF', '#0F766E', '#64748B', '#B
 
 export const CapacityAnalysisPage: React.FC<CapacityAnalysisPageProps> = ({
   profiles,
+  competencyRecords = [],
+  sysSettings: propSysSettings,
   departments,
 }) => {
   const { userAccount } = useAuth();
-  const [sysSettings, setSysSettings] = useState<SystemSetting | null>(null);
+  const [localSettings, setLocalSettings] = useState<SystemSetting | null>(null);
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [skillTypeView, setSkillTypeView] = useState<'ALL' | 'aplikasi' | 'pengetahuan'>('ALL');
+
+  const sysSettings = propSysSettings || localSettings;
 
   useEffect(() => {
-    getSystemSettings().then(setSysSettings).catch(() => {});
-  }, []);
+    if (!propSysSettings) {
+      getSystemSettings().then(setLocalSettings).catch(() => {});
+    }
+  }, [propSysSettings]);
+
+  const compMap = useMemo(() => {
+    const m = new Map<string, CompetencyItem[]>();
+    for (const rec of competencyRecords) {
+      m.set(rec.staffId, rec.items || []);
+    }
+    return m;
+  }, [competencyRecords]);
 
   const expertiseCategories = sysSettings?.expertiseCategories?.length
     ? sysSettings.expertiseCategories
     : DEFAULT_EXPERTISE_CATEGORIES;
-  const competencyCategories = sysSettings?.competencyCategories?.length
-    ? sysSettings.competencyCategories
-    : DEFAULT_COMPETENCY_CATEGORIES;
+
+  const appSkillCategories = sysSettings?.applicationSkillCategories?.length
+    ? sysSettings.applicationSkillCategories
+    : DEFAULT_APPLICATION_SKILL_CATEGORIES;
+  const knowSkillCategories = sysSettings?.knowledgeSkillCategories?.length
+    ? sysSettings.knowledgeSkillCategories
+    : DEFAULT_KNOWLEDGE_SKILL_CATEGORIES;
+
+  const competencyCategories = useMemo(() => {
+    if (skillTypeView === 'aplikasi') return appSkillCategories;
+    if (skillTypeView === 'pengetahuan') return knowSkillCategories;
+    return Array.from(new Set([...appSkillCategories, ...knowSkillCategories]));
+  }, [skillTypeView, appSkillCategories, knowSkillCategories]);
 
   const scopedProfiles = useMemo(() => {
     return profiles.filter((p) => {
+      if (!isCountableStaff(p)) return false;
       if (deptFilter !== 'ALL' && p.departmentId !== deptFilter) return false;
       if (
         categoryFilter !== 'ALL' &&
@@ -65,7 +101,10 @@ export const CapacityAnalysisPage: React.FC<CapacityAnalysisPageProps> = ({
   const totalDenominator = scopedProfiles.length;
   const filledExpertiseCount = scopedProfiles.filter((p) => Boolean(p.primaryExpertise?.trim())).length;
   const unfilledExpertiseCount = totalDenominator - filledExpertiseCount;
-  const filledCompCount = scopedProfiles.filter((p) => (p.digitalCompetencies?.length || 0) > 0).length;
+  const filledCompCount = scopedProfiles.filter((p) => {
+    const items = compMap.get(p.staffId) || [];
+    return items.length > 0 || (p.digitalCompetencies?.length || 0) > 0;
+  }).length;
   const incompleteProfilesCount = scopedProfiles.filter((p) => (p.completionPercent || 0) < 80).length;
   const avgCompletion =
     totalDenominator > 0
@@ -74,13 +113,39 @@ export const CapacityAnalysisPage: React.FC<CapacityAnalysisPageProps> = ({
 
   const dataSufficiencyWarning = avgCompletion < 75 || unfilledExpertiseCount > 0;
 
-  // Competency AI & Digital bar chart
+  // Competency AI & Digital bar chart (using new Tab F items with fallback to digitalCompetencies)
   const competencyData = useMemo(() => {
     return competencyCategories.map((cat) => {
-      const count = scopedProfiles.filter((p) => p.digitalCompetencies?.includes(cat)).length;
-      return { name: cat, jumlah: count };
+      let asasPertengahan = 0;
+      let lanjutanPakar = 0;
+      let bersijil = 0;
+
+      for (const p of scopedProfiles) {
+        const items = compMap.get(p.staffId) || [];
+        const matched = items.filter(
+          (i) =>
+            i.categoryName === cat &&
+            (skillTypeView === 'ALL' || i.skillType === skillTypeView)
+        );
+        if (matched.length > 0) {
+          const hasAdvanced = matched.some((m) => m.level === 'Lanjutan' || m.level === 'Pakar');
+          if (hasAdvanced) lanjutanPakar += 1;
+          else asasPertengahan += 1;
+          if (matched.some((m) => m.hasCertificate)) bersijil += 1;
+        } else if (items.length === 0 && p.digitalCompetencies?.includes(cat)) {
+          asasPertengahan += 1;
+        }
+      }
+
+      return {
+        name: cat,
+        asasPertengahan,
+        lanjutanPakar,
+        bersijil,
+        jumlah: asasPertengahan + lanjutanPakar,
+      };
     });
-  }, [scopedProfiles, competencyCategories]);
+  }, [scopedProfiles, compMap, competencyCategories, skillTypeView]);
 
   // Qualification Pie
   const qualPieData = useMemo(() => {
@@ -147,7 +212,7 @@ export const CapacityAnalysisPage: React.FC<CapacityAnalysisPageProps> = ({
           <div>
             <h2 className="text-lg font-bold text-[#0B1F3B]">Analisis Kapasiti Kepakaran Organisasi</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Sokongan keputusan pengurusan berasaskan rekod pangkalan data sebenar. Bukan penilaian prestasi individu.
+              Sokongan keputusan pengurusan berasaskan rekod pangkalan data sebenar (tidak termasuk Admin L0).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -234,7 +299,18 @@ export const CapacityAnalysisPage: React.FC<CapacityAnalysisPageProps> = ({
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border border-slate-200 rounded-xl p-5">
-          <h3 className="text-sm font-bold text-[#0B1F3B] mb-4">Kapasiti Kompetensi Digital & AI</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h3 className="text-sm font-bold text-[#0B1F3B]">Kapasiti Kompetensi Digital & AI</h3>
+            <select
+              value={skillTypeView}
+              onChange={(e) => setSkillTypeView(e.target.value as 'ALL' | 'aplikasi' | 'pengetahuan')}
+              className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white"
+            >
+              <option value="ALL">Semua Kemahiran (Aplikasi & Pengetahuan)</option>
+              <option value="aplikasi">Kemahiran Aplikasi Sahaja</option>
+              <option value="pengetahuan">Kemahiran Pengetahuan Sahaja</option>
+            </select>
+          </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={competencyData} layout="vertical" margin={{ left: 30 }}>
@@ -242,7 +318,9 @@ export const CapacityAnalysisPage: React.FC<CapacityAnalysisPageProps> = ({
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="name" width={165} tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Bar dataKey="jumlah" name="Bilangan Pegawai" fill="#0B1F3B" radius={[0, 4, 4, 0]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="lanjutanPakar" name="Lanjutan / Pakar" stackId="a" fill="#0B1F3B" />
+                <Bar dataKey="asasPertengahan" name="Asas / Pertengahan" stackId="a" fill="#C69738" />
               </BarChart>
             </ResponsiveContainer>
           </div>

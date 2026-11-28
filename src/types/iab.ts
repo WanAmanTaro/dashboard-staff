@@ -1,4 +1,4 @@
-export type UserRole = 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
+export type UserRole = 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
 
 export type AccountStatus = 'pending' | 'active' | 'suspended' | 'inactive';
 
@@ -66,10 +66,12 @@ export interface StaffProfile {
   id: string;
   staffId: string;
   uid: string;
+  role?: UserRole;
   fullName: string;
   officialEmail: string;
   position: string;
   grade: string;
+  kupGrade?: string;
   scheme: string;
   isLecturer: boolean;
   centerId: string;
@@ -189,12 +191,23 @@ export interface ExpertiseRecord {
   updatedBy: string;
 }
 
+export type CompetencySkillType = 'aplikasi' | 'pengetahuan';
+
 export interface CompetencyItem {
   categoryId: string;
   categoryName: string;
+  skillType?: CompetencySkillType;
   level: 'Asas' | 'Pertengahan' | 'Lanjutan' | 'Pakar';
   years: number;
   notes: string;
+  hasCertificate?: boolean;
+  certificateId?: string;
+  certificateTitle?: string;
+  certificateDriveFileId?: string;
+  hasValidityPeriod?: boolean;
+  certificateStartDate?: string;
+  certificateEndDate?: string;
+  certificateValidityDuration?: string;
 }
 
 export interface CompetencyRecord {
@@ -204,6 +217,51 @@ export interface CompetencyRecord {
   centerId: string;
   departmentId: string;
   items: CompetencyItem[];
+  status: 'active' | 'draft';
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  createdBy: string;
+  updatedBy: string;
+}
+
+export type IabCertKey =
+  | 'certifiedCoach'
+  | 'certifiedMasterCoach'
+  | 'certifiedTrainer'
+  | 'certifiedMasterTrainer'
+  | 'certifiedAccessor'
+  | 'konsultanIab';
+
+export type IabCertStatus = 'Ada' | 'Tiada';
+
+export interface IabCertItem {
+  key: IabCertKey;
+  label: string;
+  status: IabCertStatus;
+  passYear: string;
+}
+
+export type IabModuleContributionRole =
+  | 'KETUA PAKAR RUJUK (KPR)'
+  | 'PAKAR RUJUK UTAMA (PRU)'
+  | 'Ahli';
+
+export interface IabModuleContribution {
+  id: string;
+  moduleName: string;
+  year: string;
+  contribution: IabModuleContributionRole;
+  activeStatus: 'Aktif' | 'Tidak Aktif';
+}
+
+export interface IabCompetencyRecord {
+  id: string;
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  certifications: IabCertItem[];
+  modules: IabModuleContribution[];
   status: 'active' | 'draft';
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -221,6 +279,7 @@ export interface Publication {
   title: string;
   publisherOrVenue: string;
   year: string;
+  achievement?: string;
   url: string;
   description: string;
   status: 'active' | 'archived';
@@ -331,6 +390,11 @@ export interface SystemSetting {
   institutionName: string;
   expertiseCategories: string[];
   competencyCategories: string[];
+  applicationSkillCategories?: string[];
+  knowledgeSkillCategories?: string[];
+  institutionCategories?: string[];
+  publicationYears?: string[];
+  iabModules?: string[];
   status: 'active';
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -342,6 +406,7 @@ export type AppRoute =
   | 'welcome'
   | 'login'
   | 'profile'
+  | 'kompetensi-iab'
   | 'center-dashboard'
   | 'department-dashboard'
   | 'expertise-directory'

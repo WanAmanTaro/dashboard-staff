@@ -2,6 +2,7 @@ import type {
   CertificateCategory,
   CompetencyRecord,
   ExpertiseRecord,
+  IabCertKey,
   Publication,
   PublicationType,
   Qualification,
@@ -14,6 +15,7 @@ import type {
 export const BOOTSTRAP_ADMIN_EMAIL = 'iab-1248@moe-dl.edu.my';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
+  L0: 'L0 — Admin',
   L1: 'L1 — Ketua Pusat',
   L2: 'L2 — Ketua Jabatan',
   L3: 'L3 — Pensyarah',
@@ -22,6 +24,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_SHORT_LABELS: Record<UserRole, string> = {
+  L0: 'Admin (L0)',
   L1: 'Ketua Pusat (L1)',
   L2: 'Ketua Jabatan (L2)',
   L3: 'Pensyarah (L3)',
@@ -44,19 +47,35 @@ export const DEFAULT_EXPERTISE_CATEGORIES: string[] = [
   'Keselamatan Siber & Tadbir Urus Digital',
 ];
 
-export const DEFAULT_COMPETENCY_CATEGORIES: string[] = [
+export const DEFAULT_APPLICATION_SKILL_CATEGORIES: string[] = [
+  'Canva AI',
+  'Gemini Notebook',
+  'Adobe Express',
+  'Google Gemini',
+  'NotebookLM',
+  'ChatGPT / OpenAI',
+  'Microsoft Copilot',
+  'Google Workspace AI',
+];
+
+export const DEFAULT_KNOWLEDGE_SKILL_CATEGORIES: string[] = [
+  'Digital Leadership',
+  'Digital Citizenship',
   'Generative AI',
   'AI Governance',
   'AI Ethics and Safety',
   'Data Analytics',
   'Data-Driven Decision Making',
-  'Digital Leadership',
   'Digital Transformation',
   'Educational Technology',
   'Vibe Programming',
   'Digital Content Development',
   'Cybersecurity Awareness',
-  'Kompetensi Digital Lain',
+];
+
+export const DEFAULT_COMPETENCY_CATEGORIES: string[] = [
+  ...DEFAULT_APPLICATION_SKILL_CATEGORIES,
+  ...DEFAULT_KNOWLEDGE_SKILL_CATEGORIES,
 ];
 
 export const QUALIFICATION_LEVELS: QualificationLevel[] = [
@@ -87,24 +106,184 @@ export const CERTIFICATE_CATEGORIES: CertificateCategory[] = [
 
 export const COMPETENCY_LEVELS = ['Asas', 'Pertengahan', 'Lanjutan', 'Pakar'] as const;
 
-export const COMMON_GRADES = [
-  'JUSA C',
-  'DG54',
-  'DG52',
-  'DG48',
-  'DG44',
-  'DG41',
-  'N48',
-  'N44',
-  'N41',
-  'F48',
-  'F44',
-  'F41',
-  'N32',
-  'N29',
-  'N22',
-  'N19',
+export const SERVICE_POSITIONS: string[] = [
+  'Ketua Pusat',
+  'Ketua Jabatan',
+  'Pensyarah Kanan',
+  'Pegawai Teknologi Maklumat Kanan',
+  'Pegawai Teknologi Maklumat',
+  'Pen. Peg. Teknologi Maklumat Kanan',
+  'Pen. Peg. Teknologi Maklumat',
+  'Juruteknik',
+  'Pembantu Tadbir',
+  'Lain-lain',
 ];
+
+export const SERVICE_GRADES_HAKIKI: string[] = [
+  'JUSA B',
+  'JUSA C',
+  'DG14',
+  'DG13',
+  'DG12',
+  'DG10',
+  'DG9',
+  'F13',
+  'F12',
+  'F10',
+  'F9',
+  'F6',
+  'F5',
+  'N5',
+  'N4',
+  'N3',
+  'N2',
+  'N1',
+];
+
+export const SERVICE_GRADES_KUP: string[] = [
+  ...SERVICE_GRADES_HAKIKI,
+  'TIDAK BERKENAAN',
+];
+
+export const COMMON_GRADES = SERVICE_GRADES_HAKIKI;
+
+export const DEFAULT_INSTITUTION_CATEGORIES: string[] = [
+  'UM',
+  'UKM',
+  'UPM',
+  'USM',
+  'UTM',
+  'UIAM',
+  'UPSI',
+  'UUM',
+  'UiTM',
+  'UNIMAS',
+  'UMS',
+  'UMT',
+  'UTHM',
+  'UMP',
+  'UniMAP',
+  'UTeM',
+  'UPNM',
+  'OUM',
+  'UTAR',
+  'MMU',
+  'Lain-lain',
+];
+
+export const DEFAULT_PUBLICATION_YEARS: string[] = Array.from(
+  { length: 2030 - 2015 + 1 },
+  (_, i) => String(2015 + i)
+);
+
+export const DEFAULT_IAB_MODULES: string[] = [
+  'Modul AI',
+  'NPQEL',
+  'Modul Kepimpinan Instruksional',
+  'Modul Pengurusan Organisasi',
+  'Modul Analitik Data',
+];
+
+export const IAB_MODULE_CONTRIBUTIONS = [
+  'KETUA PAKAR RUJUK (KPR)',
+  'PAKAR RUJUK UTAMA (PRU)',
+  'Ahli',
+] as const;
+
+export interface IabCertDefinition {
+  key: IabCertKey;
+  group: 'Coach' | 'Trainer' | 'Assessor' | 'Konsultan';
+  label: string;
+  prerequisiteLabel?: string;
+  requires?: IabCertKey[];
+}
+
+export const IAB_CERT_DEFINITIONS: IabCertDefinition[] = [
+  {
+    key: 'certifiedCoach',
+    group: 'Coach',
+    label: 'Certified Coach (CC)',
+  },
+  {
+    key: 'certifiedMasterCoach',
+    group: 'Coach',
+    label: 'Certified Master Coach (CMC)',
+    prerequisiteLabel: 'prasyarat: Certified Coach (CC)',
+    requires: ['certifiedCoach'],
+  },
+  {
+    key: 'certifiedTrainer',
+    group: 'Trainer',
+    label: 'Certified Trainer (CT)',
+  },
+  {
+    key: 'certifiedMasterTrainer',
+    group: 'Trainer',
+    label: 'Certified Master Trainer (CMT)',
+    prerequisiteLabel: 'prasyarat: Certified Trainer (CT)',
+    requires: ['certifiedTrainer'],
+  },
+  {
+    key: 'certifiedAccessor',
+    group: 'Assessor',
+    label: 'Certified Accessor',
+  },
+  {
+    key: 'konsultanIab',
+    group: 'Konsultan',
+    label: 'Konsultan IAB',
+    prerequisiteLabel: 'Prasyarat: Semua 5 certified di atas',
+    requires: [
+      'certifiedCoach',
+      'certifiedMasterCoach',
+      'certifiedTrainer',
+      'certifiedMasterTrainer',
+      'certifiedAccessor',
+    ],
+  },
+];
+
+export const IAB_CERT_SHORT_CODES: Record<IabCertKey, string> = {
+  certifiedCoach: 'CC',
+  certifiedMasterCoach: 'CMC',
+  certifiedTrainer: 'CT',
+  certifiedMasterTrainer: 'CMT',
+  certifiedAccessor: 'CA',
+  konsultanIab: 'Konsultan IAB',
+};
+
+export function getIabCertDisplayLabel(key: IabCertKey, fallbackLabel?: string): string {
+  return IAB_CERT_DEFINITIONS.find((d) => d.key === key)?.label || fallbackLabel || key;
+}
+
+export function buildSafeDriveFilePrefix(
+  staffName?: string,
+  staffEmail?: string,
+  fallbackId?: string
+): string {
+  const raw = (staffName || '').trim() || (staffEmail || '').trim() || (fallbackId || 'Pegawai').trim();
+  const cleaned = raw
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64);
+  return cleaned || 'Pegawai';
+}
+
+export function normalizeGenderShort(raw?: string): 'L' | 'P' | '' {
+  const val = String(raw || '').trim().toLowerCase();
+  if (!val) return '';
+  if (val === 'l' || val.startsWith('lelaki') || val === 'male' || val === 'm') return 'L';
+  if (val === 'p' || val.startsWith('perempuan') || val === 'wanita' || val === 'female' || val === 'f') {
+    return 'P';
+  }
+  return '';
+}
+
+export function isCountableStaff(p: Partial<StaffProfile> | null | undefined): boolean {
+  if (!p) return false;
+  return p.role !== 'L0';
+}
 
 export function computeProfileCompletion(params: {
   profile: Partial<StaffProfile>;
@@ -197,25 +376,53 @@ export function computeProfileCompletion(params: {
   };
 }
 
+export const QUALIFICATION_LEVEL_RANK: Record<QualificationLevel, number> = {
+  PhD: 5,
+  Sarjana: 4,
+  'Sarjana Muda': 3,
+  Diploma: 2,
+  'Kelayakan Lain': 1,
+};
+
 export function getHighestQualificationFromList(list: Qualification[]): string {
-  const rank: Record<QualificationLevel, number> = {
-    PhD: 5,
-    Sarjana: 4,
-    'Sarjana Muda': 3,
-    Diploma: 2,
-    'Kelayakan Lain': 1,
-  };
   let best = '';
   let bestRank = 0;
   for (const q of list) {
     if (q.status !== 'active') continue;
-    const r = rank[q.level] || 0;
+    const r = QUALIFICATION_LEVEL_RANK[q.level] || 0;
     if (r > bestRank) {
       bestRank = r;
       best = q.level;
     }
   }
   return best;
+}
+
+export function sortQualificationsHighestFirst(list: Qualification[]): Qualification[] {
+  return [...list].sort((a, b) => {
+    const rankDiff = (QUALIFICATION_LEVEL_RANK[b.level] || 0) - (QUALIFICATION_LEVEL_RANK[a.level] || 0);
+    if (rankDiff !== 0) return rankDiff;
+    const yrB = parseInt(String(b.graduationYear || '0'), 10) || 0;
+    const yrA = parseInt(String(a.graduationYear || '0'), 10) || 0;
+    return yrB - yrA;
+  });
+}
+
+export function hasValidAchievement(val?: string): boolean {
+  const cleaned = String(val || '').trim();
+  return cleaned !== '' && cleaned.toLowerCase() !== 'tidak berkenaan';
+}
+
+export function sortPublicationsDefault(list: Publication[]): Publication[] {
+  return [...list].sort((a, b) => {
+    const aHas = hasValidAchievement(a.achievement) ? 1 : 0;
+    const bHas = hasValidAchievement(b.achievement) ? 1 : 0;
+    if (bHas !== aHas) return bHas - aHas;
+    const yrB = parseInt(String(b.year || '0'), 10) || 0;
+    const yrA = parseInt(String(a.year || '0'), 10) || 0;
+    if (yrB !== yrA) return yrB - yrA;
+    return a.title.localeCompare(b.title);
+  });
 }
 
 export function formatBytes(bytes: number): string {

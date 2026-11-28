@@ -93,8 +93,8 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onGoToLogin }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3.5 rounded-lg bg-[#0B1F3B]/70 border border-white/10">
                   <p className="text-xs text-slate-300">Tahap Kawalan Akses</p>
-                  <p className="text-xl font-bold text-[#F5D076] font-mono-tabular mt-1">5 + Admin</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">RBAC L1 hingga L5</p>
+                  <p className="text-xl font-bold text-[#F5D076] font-mono-tabular mt-1">6 Peranan</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">RBAC L0 hingga L5</p>
                 </div>
                 <div className="p-3.5 rounded-lg bg-[#0B1F3B]/70 border border-white/10">
                   <p className="text-xs text-slate-300">Bahagian Biodata</p>
@@ -108,8 +108,8 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({ onGoToLogin }) => {
                 </div>
                 <div className="p-3.5 rounded-lg bg-[#0B1F3B]/70 border border-white/10">
                   <p className="text-xs text-slate-300">Kompetensi Digital & AI</p>
-                  <p className="text-xl font-bold text-white font-mono-tabular mt-1">12 Bidang</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Termasuk GenAI & Etika</p>
+                  <p className="text-xl font-bold text-white font-mono-tabular mt-1">20 Bidang</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Aplikasi & Pengetahuan AI</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-300 pt-1">

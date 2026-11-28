@@ -414,11 +414,32 @@ export function mapCategoryToSubfolder(category: string): IabSubfolderKey {
   }
 }
 
+function sanitizeDriveFolderLabel(
+  staffName?: string,
+  staffEmail?: string,
+  fallbackStaffId?: string
+): string {
+  const candidate =
+    String(staffName || '').trim() ||
+    String(staffEmail || '').trim() ||
+    String(fallbackStaffId || '').trim() ||
+    'Staf_IAB';
+  const cleaned = candidate
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/'/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+  return cleaned || fallbackStaffId || 'Staf_IAB';
+}
+
 export async function uploadFileToDrive(params: {
   buffer: Buffer;
   fileName: string;
   mimeType: string;
   staffId: string;
+  staffName?: string;
+  staffEmail?: string;
   category: string;
   isPhoto?: boolean;
 }) {
@@ -433,15 +454,15 @@ export async function uploadFileToDrive(params: {
     categoryFolderId = ensured.folderIds[subfolderKey];
   }
 
-  // Strictly use non-sensitive Staff ID for employee subfolder (never IC number)
   const safeStaffId = params.staffId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const staffFolderId = await findOrCreateFolder(drive, safeStaffId, categoryFolderId);
+  const folderLabel = sanitizeDriveFolderLabel(params.staffName, params.staffEmail, safeStaffId);
+  const staffFolderId = await findOrCreateFolder(drive, folderLabel, categoryFolderId);
 
   const res = await drive.files.create({
     requestBody: {
       name: params.fileName,
       parents: [staffFolderId],
-      description: `IAB_STAFF_ID:${safeStaffId} CATEGORY:${params.category}`,
+      description: `IAB_STAFF_ID:${safeStaffId} STAFF_NAME:${folderLabel} CATEGORY:${params.category}`,
     },
     media: {
       mimeType: params.mimeType,

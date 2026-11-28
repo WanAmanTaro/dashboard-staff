@@ -26,14 +26,52 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
+function formatApiErrorMessage(rawMessage: string): string {
+  if (rawMessage.includes('DRIVE_DISCONNECTED')) {
+    return 'Storan Google Drive sistem belum disambungkan. Sila hubungi Pentadbir Sistem untuk menyambungkan Google Drive di Modul Pengurusan Google Drive.';
+  }
+  if (rawMessage.includes('GOOGLE_DRIVE_CLIENT_ID') || rawMessage.includes('GOOGLE_DRIVE_CLIENT_SECRET')) {
+    return 'Konfigurasi Google Drive OAuth pelayan belum lengkap. Sila hubungi Pentadbir Sistem.';
+  }
+  return rawMessage;
+}
+
+async function parseApiJsonResponse<T>(res: Response, fallbackError: string): Promise<T> {
+  const text = await res.text();
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const trimmed = text.trim();
+
+  if (
+    trimmed.startsWith('<!doctype') ||
+    trimmed.startsWith('<!DOCTYPE') ||
+    trimmed.startsWith('<html') ||
+    contentType.includes('text/html')
+  ) {
+    throw new Error(
+      `Pelayan muat naik tidak memulangkan respons JSON yang sah (HTTP ${res.status}). Pastikan pelayan API aktif dan storan Google Drive telah disambungkan oleh Pentadbir.`
+    );
+  }
+
+  let json: any = {};
+  if (trimmed) {
+    try {
+      json = JSON.parse(trimmed);
+    } catch {
+      throw new Error(`${fallbackError} (Respons pelayan tidak sah: HTTP ${res.status})`);
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(formatApiErrorMessage(json?.error || fallbackError));
+  }
+
+  return json as T;
+}
+
 export async function getDriveStatus(): Promise<DriveStatusResponse> {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/drive/status', { headers });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Gagal mendapatkan status Google Drive.');
-  }
-  return json;
+  return parseApiJsonResponse<DriveStatusResponse>(res, 'Gagal mendapatkan status Google Drive.');
 }
 
 export async function openDriveOAuthPopup(mode: 'connect' | 'reconnect' = 'connect'): Promise<string> {
@@ -42,9 +80,12 @@ export async function openDriveOAuthPopup(mode: 'connect' | 'reconnect' = 'conne
   const method = mode === 'reconnect' ? 'POST' : 'GET';
 
   const res = await fetch(endpoint, { method, headers });
-  const json = await res.json();
-  if (!res.ok || !json.url) {
-    throw new Error(json.error || 'Gagal mendapatkan pautan pengesahan Google Drive.');
+  const json = await parseApiJsonResponse<{ url?: string; error?: string }>(
+    res,
+    'Gagal mendapatkan pautan pengesahan Google Drive.'
+  );
+  if (!json.url) {
+    throw new Error('Gagal mendapatkan pautan pengesahan Google Drive.');
   }
 
   return new Promise((resolve, reject) => {
@@ -88,26 +129,21 @@ export async function testDriveConnectionApi(): Promise<{
 }> {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/drive/test', { method: 'POST', headers });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Ujian sambungan Google Drive gagal.');
-  }
-  return json;
+  return parseApiJsonResponse(res, 'Ujian sambungan Google Drive gagal.');
 }
 
 export async function disconnectDriveApi(): Promise<void> {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/drive/disconnect', { method: 'POST', headers });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Gagal memutuskan sambungan Google Drive.');
-  }
+  await parseApiJsonResponse(res, 'Gagal memutuskan sambungan Google Drive.');
 }
 
 export async function uploadFileToDriveApi(params: {
   file: Blob;
   fileName: string;
   staffId: string;
+  staffName?: string;
+  staffEmail?: string;
   category: string;
   isPhoto?: boolean;
 }): Promise<{
@@ -121,6 +157,8 @@ export async function uploadFileToDriveApi(params: {
   const form = new FormData();
   form.append('file', params.file, params.fileName);
   form.append('staffId', params.staffId);
+  if (params.staffName) form.append('staffName', params.staffName);
+  if (params.staffEmail) form.append('staffEmail', params.staffEmail);
   form.append('category', params.category);
   form.append('isPhoto', params.isPhoto ? 'true' : 'false');
 
@@ -129,15 +167,13 @@ export async function uploadFileToDriveApi(params: {
     headers,
     body: form,
   });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Muat naik ke Google Drive gagal.');
-  }
-  return json;
+  return parseApiJsonResponse(res, 'Muat naik ke Google Drive gagal.');
 }
 
 export async function uploadStaffPhotosApi(params: {
   staffId: string;
+  staffName?: string;
+  staffEmail?: string;
   originalFile?: File | null;
   displayBlob: Blob;
 }): Promise<{
@@ -147,21 +183,24 @@ export async function uploadStaffPhotosApi(params: {
   const headers = await getAuthHeaders();
   const form = new FormData();
   form.append('staffId', params.staffId);
+  if (params.staffName) form.append('staffName', params.staffName);
+  if (params.staffEmail) form.append('staffEmail', params.staffEmail);
   if (params.originalFile) {
     form.append('original', params.originalFile, params.originalFile.name);
   }
-  form.append('display', params.displayBlob, `display_${params.staffId}.png`);
+  const safePrefix =
+    (params.staffName || params.staffEmail || params.staffId)
+      .replace(/[\\/:*?"<>|]+/g, ' ')
+      .replace(/\s+/g, '_')
+      .slice(0, 60) || params.staffId;
+  form.append('display', params.displayBlob, `display_${safePrefix}.png`);
 
   const res = await fetch('/api/profile/photo', {
     method: 'POST',
     headers,
     body: form,
   });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Muat naik gambar ke Google Drive gagal.');
-  }
-  return json;
+  return parseApiJsonResponse(res, 'Muat naik gambar ke Google Drive gagal.');
 }
 
 export async function replaceDriveFileApi(
@@ -176,21 +215,14 @@ export async function replaceDriveFileApi(
     headers,
     body: form,
   });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Gagal menggantikan fail dalam Google Drive.');
-  }
-  return json;
+  return parseApiJsonResponse(res, 'Gagal menggantikan fail dalam Google Drive.');
 }
 
 export async function deleteDriveFileApi(driveFileId: string, orphanCleanup = false): Promise<void> {
   const headers = await getAuthHeaders();
   const url = `/api/drive/file/${encodeURIComponent(driveFileId)}${orphanCleanup ? '?orphan=1' : ''}`;
   const res = await fetch(url, { method: 'DELETE', headers });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Gagal memadam fail dalam Google Drive.');
-  }
+  await parseApiJsonResponse(res, 'Gagal memadam fail dalam Google Drive.');
 }
 
 export async function fetchDriveFileBlob(
@@ -203,8 +235,7 @@ export async function fetchDriveFileBlob(
     { headers }
   );
   if (!res.ok) {
-    const errJson = await res.json().catch(() => ({}));
-    throw new Error(errJson.error || 'Gagal memuat turun fail daripada Google Drive.');
+    await parseApiJsonResponse(res, 'Gagal memuat turun fail daripada Google Drive.');
   }
   const blob = await res.blob();
   const disposition = res.headers.get('content-disposition') || '';

@@ -15,11 +15,13 @@ import {
 import { Download, Eye, Search } from 'lucide-react';
 import { DriveImage } from '../components/DriveImage';
 import { useAuth } from '../contexts/AuthContext';
+import { isCountableStaff } from '../lib/constants';
 import { exportStaffProfilesToExcel } from '../utils/excelExport';
-import type { Department, StaffProfile } from '../types/iab';
+import type { CompetencyItem, CompetencyRecord, Department, StaffProfile } from '../types/iab';
 
 interface DepartmentDashboardPageProps {
   profiles: StaffProfile[];
+  competencyRecords?: CompetencyRecord[];
   departments: Department[];
   onInspectProfile: (staffId: string) => void;
 }
@@ -28,6 +30,7 @@ const COLORS = ['#0B1F3B', '#C69738', '#1E40AF', '#0F766E', '#64748B'];
 
 export const DepartmentDashboardPage: React.FC<DepartmentDashboardPageProps> = ({
   profiles,
+  competencyRecords = [],
   departments,
   onInspectProfile,
 }) => {
@@ -50,20 +53,32 @@ export const DepartmentDashboardPage: React.FC<DepartmentDashboardPageProps> = (
   const activeDeptId = isL2Locked ? userAccount?.departmentId || '' : selectedDeptId || accessibleDepts[0]?.id || '';
   const activeDept = departments.find((d) => d.id === activeDeptId);
 
+  const compMap = useMemo(() => {
+    const m = new Map<string, CompetencyItem[]>();
+    for (const rec of competencyRecords) {
+      m.set(rec.staffId, rec.items || []);
+    }
+    return m;
+  }, [competencyRecords]);
+
   const deptProfiles = useMemo(() => {
-    return profiles.filter((p) => p.departmentId === activeDeptId);
+    return profiles.filter((p) => isCountableStaff(p) && p.departmentId === activeDeptId);
   }, [profiles, activeDeptId]);
 
   const filteredProfiles = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return deptProfiles;
-    return deptProfiles.filter(
-      (p) =>
+    return deptProfiles.filter((p) => {
+      const items = compMap.get(p.staffId) || [];
+      const compText = items.map((i) => `${i.categoryName} ${i.level}`).join(' ').toLowerCase();
+      return (
         p.fullName.toLowerCase().includes(q) ||
         (p.primaryExpertise || '').toLowerCase().includes(q) ||
-        (p.position || '').toLowerCase().includes(q)
-    );
-  }, [deptProfiles, searchQuery]);
+        (p.position || '').toLowerCase().includes(q) ||
+        compText.includes(q)
+      );
+    });
+  }, [deptProfiles, compMap, searchQuery]);
 
   const gradeStats = useMemo(() => {
     const m = new Map<string, number>();
@@ -100,9 +115,19 @@ export const DepartmentDashboardPage: React.FC<DepartmentDashboardPageProps> = (
           deptProfiles.reduce((acc, p) => acc + (p.completionPercent || 0), 0) / deptProfiles.length
         )
       : 0;
-  const aiCompetencyCount = deptProfiles.filter((p) =>
-    p.digitalCompetencies?.some((c) => /ai|genai/i.test(c))
-  ).length;
+
+  const digitalStats = useMemo(() => {
+    let staffWithComp = 0;
+    let appSkills = 0;
+    let knowSkills = 0;
+    for (const p of deptProfiles) {
+      const items = compMap.get(p.staffId) || [];
+      if (items.length > 0 || (p.digitalCompetencies?.length || 0) > 0) staffWithComp += 1;
+      appSkills += items.filter((i) => i.skillType === 'aplikasi').length;
+      knowSkills += items.filter((i) => i.skillType === 'pengetahuan').length;
+    }
+    return { staffWithComp, appSkills, knowSkills };
+  }, [deptProfiles, compMap]);
 
   return (
     <div className="space-y-6">
@@ -134,7 +159,7 @@ export const DepartmentDashboardPage: React.FC<DepartmentDashboardPageProps> = (
           <button
             type="button"
             onClick={() =>
-              exportStaffProfilesToExcel(deptProfiles, `IAB_Jabatan_${activeDept?.code || 'DEPT'}`)
+              exportStaffProfilesToExcel(deptProfiles, `IAB_Jabatan_${activeDept?.code || 'DEPT'}`, compMap)
             }
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
           >
@@ -159,9 +184,12 @@ export const DepartmentDashboardPage: React.FC<DepartmentDashboardPageProps> = (
           </p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4">
-          <p className="text-xs text-slate-500">Kompetensi AI & GenAI</p>
+          <p className="text-xs text-slate-500">Kompetensi Digital & AI</p>
           <p className="text-2xl font-extrabold text-[#0B1F3B] font-mono-tabular mt-1">
-            {aiCompetencyCount}
+            {digitalStats.staffWithComp}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {digitalStats.appSkills} Aplikasi · {digitalStats.knowSkills} Pengetahuan
           </p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -280,39 +308,47 @@ export const DepartmentDashboardPage: React.FC<DepartmentDashboardPageProps> = (
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredProfiles.map((p) => (
-                    <tr key={p.staffId}>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2">
-                          <DriveImage
-                            driveFileId={p.photoDisplayUrl}
-                            fullName={p.fullName}
-                            className="w-7 h-7 rounded-md"
-                          />
-                          <span className="font-semibold text-[#0B1F3B]">{p.fullName}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {p.position || '-'} · <span className="font-mono-tabular">{p.grade || '-'}</span>
-                      </td>
-                      <td className="py-2.5 px-3">{p.primaryExpertise || 'Belum Diisi'}</td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        {p.digitalCompetencies?.slice(0, 3).join(', ') || 'Belum Diisi'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono-tabular font-semibold">
-                        {p.completionPercent}%
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => onInspectProfile(p.staffId)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-[#0B1F3B] rounded-md"
-                        >
-                          <Eye className="w-3 h-3" /> Lihat
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredProfiles.map((p) => {
+                    const items = compMap.get(p.staffId) || [];
+                    const compSummary =
+                      items.length > 0
+                        ? items
+                            .slice(0, 3)
+                            .map((i) => `${i.categoryName} (${i.level})`)
+                            .join(', ') + (items.length > 3 ? ` +${items.length - 3}` : '')
+                        : p.digitalCompetencies?.slice(0, 3).join(', ') || 'Belum Diisi';
+                    return (
+                      <tr key={p.staffId}>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <DriveImage
+                              driveFileId={p.photoDisplayUrl}
+                              fullName={p.fullName}
+                              className="w-7 h-7 rounded-md"
+                            />
+                            <span className="font-semibold text-[#0B1F3B]">{p.fullName}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {p.position || '-'} · <span className="font-mono-tabular">{p.grade || '-'}</span>
+                        </td>
+                        <td className="py-2.5 px-3">{p.primaryExpertise || 'Belum Diisi'}</td>
+                        <td className="py-2.5 px-3 text-slate-600">{compSummary}</td>
+                        <td className="py-2.5 px-3 text-right font-mono-tabular font-semibold">
+                          {p.completionPercent}%
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => onInspectProfile(p.staffId)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-[#0B1F3B] rounded-md"
+                          >
+                            <Eye className="w-3 h-3" /> Lihat
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

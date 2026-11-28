@@ -201,6 +201,49 @@ app.post('/api/drive/disconnect', requireAdmin, (_req, res) => {
   res.json({ disconnected: true, status: getDriveStatusSummary() });
 });
 
+async function resolveStaffDriveIdentity(
+  caller: NonNullable<Express.Request['caller']>,
+  staffId: string,
+  bodyStaffName?: unknown,
+  bodyStaffEmail?: unknown
+): Promise<{ staffName: string; staffEmail: string; filePrefix: string }> {
+  let staffName = String(bodyStaffName || '').trim();
+  let staffEmail = String(bodyStaffEmail || '').trim();
+
+  if (!staffName || !staffEmail) {
+    try {
+      const profileDoc = await firestoreGetAsCaller(`staff_profiles/${staffId}`, caller.idToken);
+      if (profileDoc) {
+        if (!staffName && typeof profileDoc.fullName === 'string') {
+          staffName = profileDoc.fullName.trim();
+        }
+        if (!staffEmail && typeof profileDoc.officialEmail === 'string') {
+          staffEmail = profileDoc.officialEmail.trim();
+        }
+      }
+    } catch {
+      // Fallback cleanly to caller context if profile doc does not exist yet
+    }
+  }
+
+  if (!staffName && caller.staffId === staffId && typeof caller.userDoc?.displayName === 'string') {
+    staffName = caller.userDoc.displayName.trim();
+  }
+  if (!staffEmail && caller.staffId === staffId) {
+    staffEmail = caller.email || '';
+  }
+
+  const rawLabel = staffName || staffEmail || staffId;
+  const filePrefix =
+    rawLabel
+      .replace(/[\\/:*?"<>|]+/g, ' ')
+      .replace(/\s+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 64) || staffId;
+
+  return { staffName, staffEmail, filePrefix };
+}
+
 // Upload certificate, PDF, or photo to Storage Owner's Drive
 app.post('/api/drive/upload', uploadLimiter, requireActiveStaff, upload.single('file'), async (req, res) => {
   try {
@@ -221,7 +264,7 @@ app.post('/api/drive/upload', uploadLimiter, requireActiveStaff, upload.single('
     }
 
     if (!caller.isAdmin && caller.staffId !== staffId) {
-      res.status(403).json({ error: 'Anda hanya dibenarkan memuat naik fail untuk profil sendiri.' });
+      res.status(401).json({ error: 'Anda hanya dibenarkan memuat naik fail untuk profil sendiri.', code: 'FORBIDDEN' });
       return;
     }
 
@@ -235,11 +278,26 @@ app.post('/api/drive/upload', uploadLimiter, requireActiveStaff, upload.single('
       return;
     }
 
+    const identity = await resolveStaffDriveIdentity(
+      caller,
+      staffId,
+      req.body.staffName,
+      req.body.staffEmail
+    );
+    const cleanedOriginalName = file.originalname.startsWith(`${staffId}_`)
+      ? file.originalname.slice(staffId.length + 1)
+      : file.originalname;
+    const finalFileName = cleanedOriginalName.startsWith(`${identity.filePrefix}_`)
+      ? cleanedOriginalName
+      : `${identity.filePrefix}_${cleanedOriginalName}`;
+
     const uploaded = await uploadFileToDrive({
       buffer: file.buffer,
-      fileName: file.originalname,
+      fileName: finalFileName,
       mimeType: file.mimetype,
       staffId,
+      staffName: identity.staffName,
+      staffEmail: identity.staffEmail,
       category,
       isPhoto,
     });
@@ -247,7 +305,7 @@ app.post('/api/drive/upload', uploadLimiter, requireActiveStaff, upload.single('
     res.json({ ok: true, ...uploaded });
   } catch (err: any) {
     const message = err?.message || 'Muat naik fail ke Google Drive gagal.';
-    const status = message.includes('DRIVE_DISCONNECTED') || message.includes('GOOGLE_DRIVE_CLIENT_ID') ? 503 : 400;
+    const status = message.includes('DRIVE_DISCONNECTED') || message.includes('GOOGLE_DRIVE_CLIENT_ID') ? 422 : 400;
     res.status(status).json({ error: message });
   }
 });
@@ -280,7 +338,7 @@ app.post(
         return;
       }
       if (!caller.isAdmin && caller.staffId !== staffId) {
-        res.status(403).json({ error: 'Akses ditolak untuk mengemas kini gambar pegawai lain.' });
+        res.status(401).json({ error: 'Akses ditolak untuk mengemas kini gambar pegawai lain.', code: 'FORBIDDEN' });
         return;
       }
 
@@ -293,13 +351,22 @@ app.post(
         return;
       }
 
+      const identity = await resolveStaffDriveIdentity(
+        caller,
+        staffId,
+        req.body.staffName,
+        req.body.staffEmail
+      );
+
       let originalRes = null;
       if (originalFile) {
         originalRes = await uploadFileToDrive({
           buffer: originalFile.buffer,
-          fileName: `ORIGINAL_${staffId}_${Date.now()}_${originalFile.originalname}`,
+          fileName: `ORIGINAL_${identity.filePrefix}_${Date.now()}_${originalFile.originalname}`,
           mimeType: originalFile.mimetype,
           staffId,
+          staffName: identity.staffName,
+          staffEmail: identity.staffEmail,
           category: 'PROFILE_PHOTO',
           isPhoto: true,
         });
@@ -308,9 +375,11 @@ app.post(
 
       const displayRes = await uploadFileToDrive({
         buffer: displayFile.buffer,
-        fileName: `DISPLAY_1x1_${staffId}_${Date.now()}.png`,
+        fileName: `DISPLAY_1x1_${identity.filePrefix}_${Date.now()}.png`,
         mimeType: displayFile.mimetype,
         staffId,
+        staffName: identity.staffName,
+        staffEmail: identity.staffEmail,
         category: 'PROFILE_PHOTO',
         isPhoto: true,
       });
@@ -327,7 +396,7 @@ app.post(
         await deleteDriveFile(id).catch(() => {});
       }
       const message = err?.message || 'Muat naik gambar ke Google Drive gagal.';
-      const status = message.includes('DRIVE_DISCONNECTED') || message.includes('GOOGLE_DRIVE_CLIENT_ID') ? 503 : 400;
+      const status = message.includes('DRIVE_DISCONNECTED') || message.includes('GOOGLE_DRIVE_CLIENT_ID') ? 422 : 400;
       res.status(status).json({ error: message });
     }
   }
@@ -345,7 +414,7 @@ app.get('/api/drive/file/:id', requireActiveStaff, async (req, res) => {
 
     const access = await verifyDriveFileAccess(caller, fileId, 'read');
     if (!access.allowed) {
-      res.status(403).json({ error: 'Anda tidak mempunyai kebenaran untuk mengakses dokumen ini.' });
+      res.status(401).json({ error: 'Anda tidak mempunyai kebenaran untuk mengakses dokumen ini.', code: 'FORBIDDEN' });
       return;
     }
 
@@ -359,7 +428,9 @@ app.get('/api/drive/file/:id', requireActiveStaff, async (req, res) => {
     res.setHeader('Cache-Control', 'private, max-age=120');
     file.stream.pipe(res);
   } catch (err: any) {
-    res.status(404).json({ error: err?.message || 'Fail tidak ditemui atau Drive tidak disambungkan.' });
+    const message = err?.message || 'Fail tidak ditemui atau Drive tidak disambungkan.';
+    const status = message.includes('DRIVE_DISCONNECTED') ? 422 : 404;
+    res.status(status).json({ error: message });
   }
 });
 
@@ -376,7 +447,7 @@ app.post('/api/drive/replace/:id', uploadLimiter, requireActiveStaff, upload.sin
 
     const access = await verifyDriveFileAccess(caller, fileId, 'write');
     if (!access.allowed) {
-      res.status(403).json({ error: 'Anda hanya dibenarkan menggantikan dokumen milik anda sendiri.' });
+      res.status(401).json({ error: 'Anda hanya dibenarkan menggantikan dokumen milik anda sendiri.', code: 'FORBIDDEN' });
       return;
     }
 
@@ -415,14 +486,14 @@ app.delete('/api/drive/file/:id', requireActiveStaff, async (req, res) => {
         const meta = await getDriveFileMetadata(fileId);
         const safeStaffId = caller.staffId.replace(/[^a-zA-Z0-9_-]/g, '_');
         if (!safeStaffId || !meta.description.includes(`IAB_STAFF_ID:${safeStaffId}`)) {
-          res.status(403).json({ error: 'Anda tidak dibenarkan membersihkan fail milik pegawai lain.' });
+          res.status(401).json({ error: 'Anda tidak dibenarkan membersihkan fail milik pegawai lain.', code: 'FORBIDDEN' });
           return;
         }
       }
     } else {
       const access = await verifyDriveFileAccess(caller, fileId, 'write');
       if (!access.allowed) {
-        res.status(403).json({ error: 'Anda tidak dibenarkan memadam dokumen ini.' });
+        res.status(401).json({ error: 'Anda tidak dibenarkan memadam dokumen ini.', code: 'FORBIDDEN' });
         return;
       }
     }
@@ -450,8 +521,26 @@ app.get('/api/profile/:staffId', requireActiveStaff, async (req, res) => {
     }
     res.json(doc);
   } catch (err: any) {
-    res.status(403).json({ error: err?.message || 'Akses profil ditolak.' });
+    res.status(401).json({ error: err?.message || 'Akses profil ditolak.', code: 'FORBIDDEN' });
   }
+});
+
+// Ensure unmatched /api/* routes and Multer/Express errors always return JSON, never HTML
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Laluan API tidak ditemui.' });
+});
+
+app.use('/api', (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'Saiz fail melebihi had maksimum pelayan (25 MB).' });
+      return;
+    }
+    res.status(400).json({ error: `Ralat muat naik fail: ${err.message}` });
+    return;
+  }
+  const status = typeof err?.status === 'number' ? err.status : 500;
+  res.status(status).json({ error: err?.message || 'Ralat pelayan API berlaku.' });
 });
 
 // =========================================================

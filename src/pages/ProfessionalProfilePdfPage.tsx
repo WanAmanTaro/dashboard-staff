@@ -3,6 +3,11 @@ import { CloudUpload, Download, FileText } from 'lucide-react';
 import { DriveImage } from '../components/DriveImage';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  getIabCertDisplayLabel,
+  sortPublicationsDefault,
+  sortQualificationsHighestFirst,
+} from '../lib/constants';
 import { fetchDriveFileBlob, uploadFileToDriveApi } from '../services/apiClient';
 import {
   getStaffProfileBundle,
@@ -14,6 +19,7 @@ import type {
   Certificate,
   CompetencyRecord,
   ExpertiseRecord,
+  IabCompetencyRecord,
   Publication,
   Qualification,
   StaffPrivatePII,
@@ -53,6 +59,7 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
     qualifications: Qualification[];
     expertise: ExpertiseRecord | null;
     competencies: CompetencyRecord | null;
+    iabCompetencies?: IabCompetencyRecord | null;
     publications: Publication[];
     certificates: Certificate[];
   } | null>(null);
@@ -102,6 +109,7 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
           qualifications: bundle.qualifications,
           expertise: bundle.expertise,
           competencies: bundle.competencies,
+          iabCompetencies: bundle.iabCompetencies,
           publications: bundle.publications,
           certificates: bundle.certificates,
           photoDataUrl,
@@ -118,6 +126,8 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
             file: blob,
             fileName,
             staffId: bundle.profile.staffId,
+            staffName: bundle.profile.fullName,
+            staffEmail: bundle.profile.officialEmail,
             category: 'GENERATED_PROFILE',
           });
           driveFileId = uploaded.fileId;
@@ -166,6 +176,13 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
   };
 
   const p = bundle?.profile;
+  const sortedQuals = sortQualificationsHighestFirst(bundle?.qualifications || []);
+  const sortedPubs = sortPublicationsDefault(bundle?.publications || []);
+  const compItems = bundle?.competencies?.items || [];
+  const appSkills = compItems.filter((c) => c.skillType === 'aplikasi');
+  const knowSkills = compItems.filter((c) => c.skillType !== 'aplikasi');
+  const iabCertsAda = (bundle?.iabCompetencies?.certifications || []).filter((c) => c.status === 'Ada');
+  const iabModules = bundle?.iabCompetencies?.modules || [];
 
   return (
     <div className="space-y-6">
@@ -269,7 +286,8 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
               <div className="space-y-1">
                 <h4 className="text-xl font-bold text-[#0B1F3B]">{p.fullName}</h4>
                 <p className="text-slate-700 font-medium">
-                  {p.position || 'Jawatan belum diisi'} ({p.grade || '-'})
+                  {p.position || 'Jawatan belum diisi'} (Hakiki: {p.grade || '-'}
+                  {p.kupGrade && p.kupGrade !== 'TIDAK BERKENAAN' ? ` | KUP: ${p.kupGrade}` : ''})
                 </p>
                 <p className="text-slate-600">{p.departmentName || '-'}</p>
                 <p className="text-slate-500 text-xs">{p.centerName || '-'}</p>
@@ -286,11 +304,30 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <p className="font-bold text-[#0B1F3B] mb-1">Kelayakan Akademik Tertinggi</p>
-                  <p className="text-slate-700">{p.highestQualification || 'Belum diisi'}</p>
+                  <p className="text-slate-700">
+                    {sortedQuals[0]
+                      ? `${sortedQuals[0].level} — ${sortedQuals[0].fieldOfStudy} (${sortedQuals[0].institution})`
+                      : p.highestQualification || 'Belum diisi'}
+                  </p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <p className="font-bold text-[#0B1F3B] mb-1">Kepakaran Utama</p>
                   <p className="text-slate-700">{p.primaryExpertise || 'Belum diisi'}</p>
+                </div>
+                <div className="sm:col-span-2 p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+                  <p className="font-bold text-[#0B1F3B]">Kompetensi Digital & AI (Tab F)</p>
+                  <p className="text-slate-700">
+                    <strong>Aplikasi AI:</strong>{' '}
+                    {appSkills.length
+                      ? appSkills.map((c) => `${c.categoryName} (${c.level}, ${c.years} thn)`).join(', ')
+                      : 'Tiada rekod'}
+                  </p>
+                  <p className="text-slate-700">
+                    <strong>Pengetahuan AI:</strong>{' '}
+                    {knowSkills.length
+                      ? knowSkills.map((c) => `${c.categoryName} (${c.level}, ${c.years} thn)`).join(', ')
+                      : 'Tiada rekod'}
+                  </p>
                 </div>
                 <div className="sm:col-span-2 p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <p className="font-bold text-[#0B1F3B] mb-1">Pengalaman Profesional</p>
@@ -304,12 +341,12 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
             ) : (
               <div className="space-y-6 text-xs">
                 <div>
-                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">Kelayakan Akademik</h5>
+                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">D. Kelayakan Akademik</h5>
                   <ul className="space-y-1 text-slate-700">
-                    {bundle?.qualifications.length ? (
-                      bundle.qualifications.map((q) => (
+                    {sortedQuals.length ? (
+                      sortedQuals.map((q, idx) => (
                         <li key={q.id}>
-                          • <strong>{q.level}</strong> — {q.fieldOfStudy}, {q.institution} ({q.graduationYear})
+                          {idx + 1}. <strong>{q.level}</strong> — {q.fieldOfStudy}, {q.institution} ({q.graduationYear})
                         </li>
                       ))
                     ) : (
@@ -318,28 +355,47 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
                   </ul>
                 </div>
 
-                <div>
-                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">Kepakaran & Kompetensi Digital/AI</h5>
-                  <p className="text-slate-700 mb-1">
+                <div className="space-y-1.5">
+                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">E & F. Kepakaran & Kompetensi Digital/AI</h5>
+                  <p className="text-slate-700">
                     <strong>Kepakaran Utama:</strong> {p.primaryExpertise || 'Belum diisi'}
                   </p>
-                  <p className="text-slate-700 mb-1">
+                  <p className="text-slate-700">
                     <strong>Kepakaran Kedua:</strong> {p.secondaryExpertise || 'Tiada rekod'}
                   </p>
                   <p className="text-slate-700">
-                    <strong>Kompetensi Digital & AI:</strong>{' '}
-                    {bundle?.competencies?.items?.map((c) => `${c.categoryName} (${c.level})`).join(', ') ||
-                      'Tiada rekod'}
+                    <strong>Kemahiran Aplikasi AI:</strong>{' '}
+                    {appSkills.length
+                      ? appSkills
+                          .map(
+                            (c) =>
+                              `${c.categoryName} (${c.level}, ${c.years} thn, Sijil: ${
+                                c.certificateDriveFileId ? 'Ada' : c.hasCertificate ? 'Ada' : 'Tiada'
+                              })`
+                          )
+                          .join(', ')
+                      : 'Tiada rekod'}
+                  </p>
+                  <p className="text-slate-700">
+                    <strong>Kemahiran Pengetahuan AI:</strong>{' '}
+                    {knowSkills.length
+                      ? knowSkills
+                          .map((c) => `${c.categoryName} (${c.level}, ${c.years} thn)`)
+                          .join(', ')
+                      : 'Tiada rekod'}
                   </p>
                 </div>
 
                 <div>
-                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">Penerbitan & Penyelidikan</h5>
+                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">H. Penerbitan & Penyelidikan</h5>
                   <ul className="space-y-1 text-slate-700">
-                    {bundle?.publications.length ? (
-                      bundle.publications.map((pub) => (
+                    {sortedPubs.length ? (
+                      sortedPubs.map((pub, idx) => (
                         <li key={pub.id}>
-                          • [{pub.type}] {pub.title} ({pub.year})
+                          {idx + 1}. [{pub.type}] {pub.title} ({pub.year}) —{' '}
+                          <span className="font-medium">
+                            Pencapaian: {pub.achievement || 'Tidak Berkenaan'}
+                          </span>
                         </li>
                       ))
                     ) : (
@@ -349,12 +405,41 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
                 </div>
 
                 <div>
-                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">Senarai Sijil & Pautan Terkawal</h5>
+                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">Kompetensi IAB</h5>
+                  {iabCertsAda.length === 0 && iabModules.length === 0 ? (
+                    <p className="text-slate-500">Tiada rekod Kompetensi IAB.</p>
+                  ) : (
+                    <div className="space-y-1.5 text-slate-700">
+                      {iabCertsAda.length > 0 && (
+                        <p>
+                          <strong>Pensijilan:</strong>{' '}
+                          {iabCertsAda
+                            .map((c) => `${getIabCertDisplayLabel(c.key, c.label)}${c.passYear ? ` (${c.passYear})` : ''}`)
+                            .join(', ')}
+                        </p>
+                      )}
+                      {iabModules.length > 0 && (
+                        <p>
+                          <strong>Modul / CPD:</strong>{' '}
+                          {iabModules
+                            .map((m) => `${m.moduleName} (${m.contribution}, ${m.year})`)
+                            .join('; ')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h5 className="font-bold text-[#0B1F3B] text-sm mb-2">J. Senarai Sijil & Pautan Terkawal</h5>
                   <ul className="space-y-1 text-slate-700">
                     {bundle?.certificates.length ? (
                       bundle.certificates.map((c) => (
                         <li key={c.id}>
-                          • {c.title} ({c.category}) — <span className="font-mono-tabular text-slate-500">ID Drive: {c.driveFileId}</span>
+                          • {c.title} ({c.category}) —{' '}
+                          <span className="font-mono-tabular text-slate-500">
+                            ID Drive: {c.driveFileId}
+                          </span>
                         </li>
                       ))
                     ) : (

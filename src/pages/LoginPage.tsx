@@ -249,7 +249,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onBackToWelcome }) => {
           </div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-[#C69738] shrink-0" />
-            <span>Kawalan akses mengikut tahap peranan (L1–L5 & Admin)</span>
+            <span>Kawalan akses mengikut tahap peranan (L0–L5 & Admin)</span>
           </div>
         </div>
       </div>
