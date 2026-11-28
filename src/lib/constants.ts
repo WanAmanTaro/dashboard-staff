@@ -143,6 +143,108 @@ export const THINK_TANK_ROLES: string[] = [
   'Pakar Rujuk',
 ];
 
+export const IAB_TEACHING_TYPES: string[] = [
+  'NPQEL',
+  'CPD',
+  'Latihan',
+  'Kursus',
+  'Bengkel',
+  'Seminar',
+  'Webinar',
+  'Coaching',
+];
+
+export const EXTERNAL_TEACHING_TYPES: string[] = [
+  'Latihan',
+  'Kursus',
+  'Bengkel',
+  'Seminar',
+  'Webinar',
+  'Coaching',
+];
+
+export const APC_AWARD_PRESETS: string[] = [
+  'APC Kali Pertama',
+  'APC Kali Kedua',
+  'APC Kali Ketiga',
+  'APC Kali Keempat',
+];
+
+export const INNOVATION_TYPES: string[] = [
+  'Produk',
+  'Sistem',
+  'Proses',
+  'Digital',
+  'Sosial',
+];
+
+export const INNOVATION_ROLES: string[] = [
+  'Ketua',
+  'Ahli',
+  'Pengasas',
+  'Pereka',
+];
+
+export const INNOVATION_LEVELS: string[] = [
+  'Sekolah',
+  'Daerah',
+  'Negeri',
+  'Bahagian',
+  'Kebangsaan',
+  'Antarabangsa',
+];
+
+export const ACHIEVEMENT_RESEARCH_TYPES: string[] = [
+  'Buku',
+  'Artikel',
+  'Jurnal',
+  'Kertas Kerja',
+  'Kajian',
+  'Laporan',
+];
+
+export const ACHIEVEMENT_RESEARCH_ROLES: string[] = [
+  'Penulis',
+  'Penulis bersama',
+  'Editor',
+  'Penyelidik',
+];
+
+export const ACHIEVEMENT_INDEXING_OPTIONS: string[] = [
+  'Scopus',
+  'WoS',
+  'MyCite',
+  'Lain-lain',
+  'Tidak berindeks',
+];
+
+export const OTHER_ACHIEVEMENT_TYPES: string[] = [
+  'Pencapaian peribadi profesional',
+  'Pencapaian dalam bidang sukan',
+  'Pencapaian dalam bidang seni dan budaya',
+  'Pencapaian dalam bidang teknologi',
+  'Pencapaian keusahawanan',
+  'Pencapaian kesukarelawanan',
+  'Pencapaian luar bidang tugas rasmi',
+  'Pencapaian khas',
+];
+
+export const OTHER_ACHIEVEMENT_ROLES: string[] = [
+  'Individu',
+  'Ketua',
+  'Ahli',
+  'Penyumbang',
+  'Lain-lain',
+];
+
+export const OTHER_ACHIEVEMENT_LEVELS: string[] = [
+  'Organisasi',
+  'Daerah',
+  'Negeri',
+  'Kebangsaan',
+  'Antarabangsa',
+];
+
 export const CERTIFICATE_CATEGORIES: CertificateCategory[] = [
   'Sijil Akademik',
   'Sijil Profesional',
@@ -401,7 +503,10 @@ export function computeProfileCompletion(params: {
       exp?.speakerExp?.trim() ||
       exp?.coachExp?.trim() ||
       exp?.projectExp?.trim() ||
-      exp?.professionalExp?.trim()
+      exp?.professionalExp?.trim() ||
+      (exp?.iabTeachingList && exp.iabTeachingList.length > 0) ||
+      (exp?.schoolTeachingList && exp.schoolTeachingList.length > 0) ||
+      (exp?.externalTeachingList && exp.externalTeachingList.length > 0)
   );
   if (hasExp) score += 10;
   else missing.push('G. Pengalaman & Sumbangan');

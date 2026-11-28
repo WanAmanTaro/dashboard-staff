@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import {
   buildSafeDriveFilePrefix,
   getIabCertDisplayLabel,
+  getProgramEvaluationRating,
   sortPublicationsDefault,
   sortQualificationsHighestFirst,
 } from '../lib/constants';
@@ -13,6 +14,8 @@ import type {
   IabCompetencyRecord,
   Publication,
   Qualification,
+  StaffAchievementsRecord,
+  StaffFunctionsRecord,
   StaffPrivatePII,
   StaffProfile,
 } from '../types/iab';
@@ -24,6 +27,8 @@ export interface ProfilePdfBundle {
   expertise: ExpertiseRecord | null;
   competencies: CompetencyRecord | null;
   iabCompetencies?: IabCompetencyRecord | null;
+  staffFunctions?: StaffFunctionsRecord | null;
+  staffAchievements?: StaffAchievementsRecord | null;
   publications: Publication[];
   certificates: Certificate[];
   photoDataUrl?: string | null;
@@ -40,12 +45,17 @@ export function generateProfessionalProfilePdf(
     expertise,
     competencies,
     iabCompetencies,
+    staffFunctions,
+    staffAchievements,
     publications,
     certificates,
     photoDataUrl,
   } = bundle;
+
   const sortedQualifications = sortQualificationsHighestFirst(qualifications);
   const sortedPublications = sortPublicationsDefault(publications);
+  const researchPubs = sortedPublications.filter((p) => p.type === 'Penyelidikan');
+  const publishingPubs = sortedPublications.filter((p) => p.type !== 'Penyelidikan');
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const nowStr = new Date().toLocaleString('ms-MY', {
@@ -139,6 +149,16 @@ export function generateProfessionalProfilePdf(
 
   const iabCertsAda = (iabCompetencies?.certifications || []).filter((c) => c.status === 'Ada');
   const iabModulesList = iabCompetencies?.modules || [];
+  const iabTeaching = expertise?.iabTeachingList || [];
+  const schoolTeaching = expertise?.schoolTeachingList || [];
+  const extTeaching = expertise?.externalTeachingList || [];
+
+  const apcAwards = staffAchievements?.apcAwards || [];
+  const innovations = staffAchievements?.innovations || [];
+  const achResearch = staffAchievements?.researchOutputs || [];
+  const otherAch = staffAchievements?.otherAchievements || [];
+
+  const getLastY = () => ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || cursorY) + 6;
 
   if (templateType === 'ringkas') {
     const digitalRingkas =
@@ -157,15 +177,48 @@ export function generateProfessionalProfilePdf(
       iabCertsAda.length > 0 || iabModulesList.length > 0
         ? [
             iabCertsAda.length
-              ? `Pensijilan: ${iabCertsAda.map((c) => `${getIabCertDisplayLabel(c.key, c.label)}${c.passYear ? ` (${c.passYear})` : ''}`).join(', ')}`
+              ? `Pensijilan: ${iabCertsAda
+                  .map((c) => `${getIabCertDisplayLabel(c.key, c.label)}${c.passYear ? ` (${c.passYear})` : ''}`)
+                  .join(', ')}`
               : '',
             iabModulesList.length
-              ? `Modul IAB: ${iabModulesList.map((m) => `${m.moduleName} (${m.contribution}, ${m.year})`).join(', ')}`
+              ? `Modul IAB: ${iabModulesList
+                  .map((m) => `${m.moduleName} (${m.contribution}, ${m.year})`)
+                  .join(', ')}`
               : '',
           ]
             .filter(Boolean)
             .join('\n')
         : 'Tiada rekod';
+
+    const teachingRingkas =
+      iabTeaching.length + schoolTeaching.length + extTeaching.length > 0
+        ? [
+            iabTeaching.length
+              ? `Di IAB: ${iabTeaching.map((t) => `${t.moduleOrField} (${t.teachingType}, ${t.years} thn)`).join('; ')}`
+              : '',
+            schoolTeaching.length
+              ? `Di Sekolah: ${schoolTeaching.map((s) => `${s.subject} (${s.years} thn)`).join('; ')}`
+              : '',
+            extTeaching.length
+              ? `Luar: ${extTeaching.map((e) => `${e.institution} - ${e.moduleOrField} (${e.years} thn)`).join('; ')}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : expertise?.professionalExp || expertise?.teachingExp || 'Tiada rekod pengalaman mengajar.';
+
+    const achRingkas =
+      apcAwards.length + innovations.length + achResearch.length + otherAch.length > 0
+        ? [
+            apcAwards.length ? `APC: ${apcAwards.map((a) => `${a.awardName} (${a.year})`).join(', ')}` : '',
+            innovations.length ? `Inovasi: ${innovations.length} rekod` : '',
+            achResearch.length ? `Penulisan/Kajian: ${achResearch.length} rekod` : '',
+            otherAch.length ? `Pengiktirafan Lain: ${otherAch.length} rekod` : '',
+          ]
+            .filter(Boolean)
+            .join(' | ')
+        : 'Tiada rekod pencapaian.';
 
     autoTable(doc, {
       startY: cursorY,
@@ -189,24 +242,25 @@ export function generateProfessionalProfilePdf(
             : profile.highestQualification || 'Belum diisi',
         ],
         ['Kepakaran Utama', profile.primaryExpertise || 'Belum diisi'],
-        ['Kepakaran Kedua', profile.secondaryExpertise || 'Tiada rekod'],
+        ['Pengalaman Mengajar', teachingRingkas],
         ['Kompetensi Digital & AI', digitalRingkas],
         ['Kompetensi IAB', iabRingkas],
-        [
-          'Pengalaman Profesional',
-          expertise?.professionalExp || expertise?.teachingExp || 'Tiada rekod pengalaman profesional.',
-        ],
+        ['Ringkasan Pencapaian', achRingkas],
       ],
     });
   } else {
-    // PROFIL LENGKAP
+    // =========================================================
+    // PROFIL LENGKAP (ALL PAGES)
+    // =========================================================
+
+    // 1. Profil Perkhidmatan & Organisasi
     autoTable(doc, {
       startY: cursorY,
       theme: 'grid',
       headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-      bodyStyles: { fontSize: 8.8, textColor: [30, 41, 59], cellPadding: 2.6 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 52, fillColor: [248, 250, 252] } },
-      head: [['A, B & C: Biodata, Perkhidmatan & Organisasi', 'Maklumat Direkodkan']],
+      bodyStyles: { fontSize: 8.6, textColor: [30, 41, 59], cellPadding: 2.5 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 54, fillColor: [248, 250, 252] } },
+      head: [['1. Profil Pegawai (Biodata, Perkhidmatan & Organisasi)', 'Maklumat Direkodkan']],
       body: [
         ['Nama Penuh', profile.fullName || '-'],
         ['ID Staf / Emel Rasmi', `${profile.staffId} · ${profile.officialEmail || '-'}`],
@@ -217,19 +271,32 @@ export function generateProfessionalProfilePdf(
             profile.kupGrade || 'TIDAK BERKENAAN'
           }) · ${profile.scheme || '-'}`,
         ],
-        ['Status & Tempoh Perkhidmatan', `${pii?.serviceStatus || '-'} (${pii?.yearsOfService ?? 0} tahun)`],
-        ['Pusat / Jabatan / Unit', `${profile.centerName || '-'} / ${profile.departmentName || '-'} / ${profile.unit || '-'}`],
-        ['Ketua Pusat / Ketua Jabatan', `${profile.headOfCenter || 'TIADA MAKLUMAT'} / ${profile.headOfDepartment || 'TIADA MAKLUMAT'}`],
+        [
+          'Tarikh Lantikan & Tempoh',
+          `${pii?.appointmentDate || '-'} (${pii?.yearsOfService ?? 0} tahun · ${
+            pii?.serviceStatus || '-'
+          })`,
+        ],
+        [
+          'Pusat / Jabatan / Unit',
+          `${profile.centerName || '-'} / ${profile.departmentName || '-'} / ${profile.unit || '-'}`,
+        ],
+        [
+          'Ketua Pusat / Ketua Jabatan',
+          `${profile.headOfCenter || 'TIADA MAKLUMAT'} / ${
+            profile.headOfDepartment || 'TIADA MAKLUMAT'
+          }`,
+        ],
       ],
     });
 
-    const nextY1 = (doc as any).lastAutoTable.finalY + 6;
+    // 2. Kelulusan Akademik
     autoTable(doc, {
-      startY: nextY1,
+      startY: getLastY(),
       theme: 'grid',
       headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-      bodyStyles: { fontSize: 8.8, textColor: [30, 41, 59], cellPadding: 2.5 },
-      head: [['D. Bil.', 'Tahap', 'Institusi', 'Bidang Pengajian', 'Tahun Tamat']],
+      bodyStyles: { fontSize: 8.6, textColor: [30, 41, 59], cellPadding: 2.4 },
+      head: [['2. Kelulusan Akademik (Bil.)', 'Tahap', 'Institusi', 'Bidang Pengajian', 'Tahun Tamat']],
       body:
         sortedQualifications.length > 0
           ? sortedQualifications.map((q, idx) => [
@@ -242,32 +309,146 @@ export function generateProfessionalProfilePdf(
           : [['-', '-', 'Tiada kelayakan akademik direkodkan', '-', '-']],
     });
 
-    const nextY2 = (doc as any).lastAutoTable.finalY + 6;
+    // 3. Pengalaman Mengajar (Di IAB, Di Sekolah, Luar)
+    const teachingRows: string[][] = [
+      ...iabTeaching.map((t, i) => [
+        `${i + 1}.`,
+        'Di IAB',
+        t.moduleOrField,
+        t.teachingType,
+        `${t.years} tahun`,
+      ]),
+      ...schoolTeaching.map((s, i) => [
+        `${i + 1}.`,
+        'Di Sekolah',
+        s.subject,
+        'Mata Pelajaran Sekolah',
+        `${s.years} tahun`,
+      ]),
+      ...extTeaching.map((e, i) => [
+        `${i + 1}.`,
+        `Luar (${e.institution})`,
+        e.moduleOrField,
+        e.teachingType,
+        `${e.years} tahun`,
+      ]),
+    ];
+
     autoTable(doc, {
-      startY: nextY2,
+      startY: getLastY(),
       theme: 'grid',
       headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-      bodyStyles: { fontSize: 8.8, textColor: [30, 41, 59], cellPadding: 2.5 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 52, fillColor: [248, 250, 252] } },
-      head: [['E & G: Kepakaran & Pengalaman', 'Butiran']],
-      body: [
-        ['Kepakaran Utama', expertise?.primaryExpertise || profile.primaryExpertise || 'Belum diisi'],
-        ['Kepakaran Kedua', expertise?.secondaryExpertise || profile.secondaryExpertise || 'Tiada rekod'],
-        ['Bidang Penyelidikan', expertise?.researchAreas?.join(', ') || 'Tiada rekod'],
-        ['Bidang Latihan / Pengajaran', expertise?.trainingAreas?.join(', ') || expertise?.teachingAreas?.join(', ') || 'Tiada rekod'],
-        ['Pengalaman Mengajar & Pengurusan', [expertise?.teachingExp, expertise?.managementExp].filter(Boolean).join(' | ') || 'Tiada rekod'],
-        ['Fasilitator, Penceramah & Jurulatih', [expertise?.facilitatorExp, expertise?.speakerExp, expertise?.coachExp].filter(Boolean).join(' | ') || 'Tiada rekod'],
-        ['Projek & Profesional', [expertise?.projectExp, expertise?.professionalExp].filter(Boolean).join(' | ') || 'Tiada rekod'],
-      ],
+      bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59], cellPadding: 2.4 },
+      head: [['3. Pengalaman Mengajar', 'Kategori', 'Bidang / Modul / Subjek', 'Jenis Pengajaran', 'Tempoh']],
+      body:
+        teachingRows.length > 0
+          ? teachingRows
+          : [['-', '-', 'Tiada rekod pengalaman mengajar didaftarkan', '-', '-']],
     });
 
-    const nextY3 = (doc as any).lastAutoTable.finalY + 6;
+    // 4. Fungsi Teras IAB (Fungsi 1 - 6)
+    const f1Trainings = staffFunctions?.trainings || [];
+    const f1Programs = staffFunctions?.programManagements || [];
+    const f2Consults = staffFunctions?.consultations || [];
+    const f5Npqel = staffFunctions?.npqelSupervisions || [];
+    const f5Evals = staffFunctions?.programEvaluations || [];
+    const f6Think = staffFunctions?.thinkTankEntries || [];
+
+    const functionSummaryRows: string[][] = [
+      ...f1Trainings.map((t) => ['Fungsi 1 (Latihan)', t.moduleName, t.role, t.year]),
+      ...f1Programs.map((p) => [
+        'Fungsi 1 (Pengurusan Program)',
+        `${p.programName} (${p.centerName}${p.departmentName ? ` / ${p.departmentName}` : ''})`,
+        p.role,
+        p.year,
+      ]),
+      ...f2Consults.map((c) => [
+        'Fungsi 2 (Konsultasi)',
+        `${c.title} — ${c.organization}`,
+        `${c.consultationType} (${c.role})`,
+        c.year,
+      ]),
+      ...researchPubs.map((r) => [
+        'Fungsi 3 (Penyelidikan)',
+        r.title,
+        r.achievement || r.publisherOrVenue || 'Penyelidik',
+        r.year,
+      ]),
+      ...publishingPubs.map((p) => [
+        `Fungsi 4 (${p.type})`,
+        p.title,
+        p.publisherOrVenue || p.achievement || '-',
+        p.year,
+      ]),
+      ...f5Npqel.map((n) => [
+        'Fungsi 5 (Penyeliaan NPQEL)',
+        `${n.participantName} (${n.participantClass})`,
+        'Penyelia',
+        n.year,
+      ]),
+      ...f5Evals.map((e) => [
+        'Fungsi 5 (Penilaian Program)',
+        `${e.programName} (${e.centerName})`,
+        `${e.role} · Skor ${e.score}% (${getProgramEvaluationRating(e.score)})`,
+        e.year,
+      ]),
+      ...f6Think.map((tk) => [
+        'Fungsi 6 (Pasukan Pemikir)',
+        `${tk.committeeName} [${tk.level}]`,
+        `${tk.role} (${tk.activeStatus})`,
+        tk.year,
+      ]),
+    ];
+
     autoTable(doc, {
-      startY: nextY3,
+      startY: getLastY(),
       theme: 'grid',
       headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-      bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59], cellPadding: 2.5 },
-      head: [['F. Kompetensi Digital & AI', 'Kategori', 'Tahap', 'Pengalaman', 'Sijil Kursus', 'Sah Laku']],
+      bodyStyles: { fontSize: 8.4, textColor: [30, 41, 59], cellPadding: 2.4 },
+      head: [['4. Penglibatan 6 Fungsi Teras IAB', 'Program / Tajuk / Jawatankuasa', 'Peranan / Butiran', 'Tahun']],
+      body:
+        functionSummaryRows.length > 0
+          ? functionSummaryRows
+          : [['-', 'Tiada penglibatan fungsi teras IAB direkodkan', '-', '-']],
+    });
+
+    // 5. Kompetensi IAB & Kompetensi Digital dan AI
+    if (iabCompetencies) {
+      autoTable(doc, {
+        startY: getLastY(),
+        theme: 'grid',
+        headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
+        bodyStyles: { fontSize: 8.4, textColor: [30, 41, 59], cellPadding: 2.4 },
+        head: [['5A. Kompetensi IAB — Pensijilan', 'Status', 'Tahun Lulus']],
+        body:
+          iabCompetencies.certifications.length > 0
+            ? iabCompetencies.certifications.map((c) => [
+                getIabCertDisplayLabel(c.key, c.label),
+                c.status,
+                c.status === 'Ada' ? c.passYear || '-' : '-',
+              ])
+            : [['Tiada rekod pensijilan IAB', '-', '-']],
+      });
+
+      autoTable(doc, {
+        startY: getLastY(),
+        theme: 'grid',
+        headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
+        bodyStyles: { fontSize: 8.4, textColor: [30, 41, 59], cellPadding: 2.4 },
+        head: [['5B. Kompetensi IAB — Modul / CPD', 'Tahun', 'Sumbangan', 'Status']],
+        body:
+          iabModulesList.length > 0
+            ? iabModulesList.map((m) => [m.moduleName, m.year, m.contribution, m.activeStatus])
+            : [['Tiada sumbangan modul/CPD direkodkan', '-', '-', '-']],
+      });
+    }
+
+    autoTable(doc, {
+      startY: getLastY(),
+      theme: 'grid',
+      headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
+      bodyStyles: { fontSize: 8.4, textColor: [30, 41, 59], cellPadding: 2.4 },
+      head: [['5C. Kompetensi Digital & AI', 'Kategori', 'Tahap', 'Pengalaman', 'Sijil Kursus', 'Sah Laku']],
       body:
         compItems.length > 0
           ? compItems.map((c) => [
@@ -285,65 +466,53 @@ export function generateProfessionalProfilePdf(
           : [['Tiada kompetensi digital/AI direkodkan', '-', '-', '-', '-', '-']],
     });
 
-    const nextY4 = (doc as any).lastAutoTable.finalY + 6;
+    // 6. Rekod Pencapaian & Pengiktirafan
+    const achievementRows: string[][] = [
+      ...apcAwards.map((a) => [
+        'A. Anugerah APC',
+        a.awardName,
+        a.certificateDriveFileId ? 'Sijil Ada' : 'Tiada',
+        a.year,
+      ]),
+      ...innovations.map((inv) => [
+        `B. Inovasi (${inv.innovationType})`,
+        inv.projectName,
+        `${inv.role} · ${inv.level}${inv.recognition ? ` · ${inv.recognition}` : ''}`,
+        inv.year,
+      ]),
+      ...achResearch.map((r) => [
+        `C. ${r.outputType}`,
+        r.title,
+        `${r.role} · ${r.publisherOrJournal || '-'} (${r.indexing})`,
+        r.year,
+      ]),
+      ...otherAch.map((o) => [
+        `D. ${o.achievementType}`,
+        o.title,
+        `${o.role} · ${o.organization || '-'} (${o.level})`,
+        o.dateOrYear,
+      ]),
+    ];
+
     autoTable(doc, {
-      startY: nextY4,
+      startY: getLastY(),
       theme: 'grid',
       headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-      bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59], cellPadding: 2.5 },
-      head: [['H. Bil.', 'Kategori', 'Tajuk', 'Tahun', 'Pencapaian', 'Penerbit / Platform']],
+      bodyStyles: { fontSize: 8.4, textColor: [30, 41, 59], cellPadding: 2.4 },
+      head: [['6. Rekod Pencapaian', 'Nama / Tajuk', 'Peranan & Pengiktirafan / Butiran', 'Tahun / Tarikh']],
       body:
-        sortedPublications.length > 0
-          ? sortedPublications.map((p, idx) => [
-              `${idx + 1}.`,
-              p.type,
-              p.title,
-              p.year,
-              p.achievement || 'Tidak Berkenaan',
-              p.publisherOrVenue || '-',
-            ])
-          : [['-', '-', 'Tiada penerbitan atau penyelidikan direkodkan', '-', '-', '-']],
+        achievementRows.length > 0
+          ? achievementRows
+          : [['-', 'Tiada rekod pencapaian didaftarkan', '-', '-']],
     });
 
-    if (iabCompetencies) {
-      const nextY4b = (doc as any).lastAutoTable.finalY + 6;
-      autoTable(doc, {
-        startY: nextY4b,
-        theme: 'grid',
-        headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-        bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59], cellPadding: 2.5 },
-        head: [['Kompetensi IAB — Bahagian A (Pensijilan)', 'Status', 'Tahun Lulus']],
-        body:
-          iabCompetencies.certifications.length > 0
-            ? iabCompetencies.certifications.map((c) => [
-                getIabCertDisplayLabel(c.key, c.label),
-                c.status,
-                c.status === 'Ada' ? c.passYear || '-' : '-',
-              ])
-            : [['Tiada rekod pensijilan IAB', '-', '-']],
-      });
-
-      const nextY4c = (doc as any).lastAutoTable.finalY + 6;
-      autoTable(doc, {
-        startY: nextY4c,
-        theme: 'grid',
-        headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-        bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59], cellPadding: 2.5 },
-        head: [['Kompetensi IAB — Bahagian B (Modul / CPD)', 'Tahun', 'Sumbangan', 'Status']],
-        body:
-          iabModulesList.length > 0
-            ? iabModulesList.map((m) => [m.moduleName, m.year, m.contribution, m.activeStatus])
-            : [['Tiada sumbangan modul/CPD direkodkan', '-', '-', '-']],
-      });
-    }
-
-    const nextY5 = (doc as any).lastAutoTable.finalY + 6;
+    // 7. Senarai Sijil & Dokumen Terkawal
     autoTable(doc, {
-      startY: nextY5,
+      startY: getLastY(),
       theme: 'grid',
       headStyles: { fillColor: [11, 31, 59], textColor: 255, fontSize: 9.5 },
-      bodyStyles: { fontSize: 8.5, textColor: [30, 41, 59], cellPadding: 2.5 },
-      head: [['J. Nama Sijil / Dokumen', 'Kategori', 'Rujukan Storan Terkawal']],
+      bodyStyles: { fontSize: 8.4, textColor: [30, 41, 59], cellPadding: 2.4 },
+      head: [['7. Nama Sijil / Dokumen', 'Kategori', 'Rujukan Storan Terkawal']],
       body:
         certificates.length > 0
           ? certificates.map((c) => [c.title, c.category, `Portal IAB /api/drive/file/${c.driveFileId}`])

@@ -166,6 +166,27 @@ export interface Qualification {
   updatedBy: string;
 }
 
+export interface TeachingIabEntry {
+  id: string;
+  moduleOrField: string;
+  teachingType: string;
+  years: number;
+}
+
+export interface TeachingSchoolEntry {
+  id: string;
+  subject: string;
+  years: number;
+}
+
+export interface TeachingExternalEntry {
+  id: string;
+  institution: string;
+  moduleOrField: string;
+  teachingType: string;
+  years: number;
+}
+
 export interface ExpertiseRecord {
   id: string;
   staffId: string;
@@ -186,6 +207,9 @@ export interface ExpertiseRecord {
   coachExp: string;
   projectExp: string;
   professionalExp: string;
+  iabTeachingList?: TeachingIabEntry[];
+  schoolTeachingList?: TeachingSchoolEntry[];
+  externalTeachingList?: TeachingExternalEntry[];
   status: 'active' | 'draft';
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -480,6 +504,77 @@ export interface StaffFunctionsRecord {
   updatedBy: string;
 }
 
+export interface ApcAwardRecord {
+  id: string;
+  awardName: string;
+  year: string;
+  certificateId?: string;
+  certificateTitle?: string;
+  certificateDriveFileId?: string;
+  fileName?: string;
+}
+
+export interface InnovationRecord {
+  id: string;
+  projectName: string;
+  innovationType: string;
+  role: string;
+  level: string;
+  recognition: string;
+  year: string;
+  evidenceUrl?: string;
+  evidenceDriveFileId?: string;
+  evidenceFileName?: string;
+}
+
+export interface AchievementResearchRecord {
+  id: string;
+  outputType: string;
+  title: string;
+  role: string;
+  publisherOrJournal: string;
+  identifier: string;
+  year: string;
+  indexing: string;
+  field: string;
+  url: string;
+  evidenceDriveFileId?: string;
+  evidenceFileName?: string;
+}
+
+export interface OtherAchievementRecord {
+  id: string;
+  title: string;
+  achievementType: string;
+  description: string;
+  role: string;
+  organization: string;
+  level: string;
+  dateOrYear: string;
+  impact: string;
+  evidenceUrl?: string;
+  evidenceDriveFileId?: string;
+  evidenceFileName?: string;
+  notes: string;
+}
+
+export interface StaffAchievementsRecord {
+  id: string;
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  apcAwards: ApcAwardRecord[];
+  innovations: InnovationRecord[];
+  researchOutputs: AchievementResearchRecord[];
+  otherAchievements: OtherAchievementRecord[];
+  status: 'active' | 'draft';
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  createdBy: string;
+  updatedBy: string;
+}
+
 export type AppRoute =
   | 'welcome'
   | 'login'
@@ -492,6 +587,7 @@ export type AppRoute =
   | 'fungsi-penerbitan'
   | 'fungsi-pentaksiran'
   | 'fungsi-pemikir'
+  | 'pencapaian'
   | 'kompetensi-iab'
   | 'digital-competencies'
   | 'center-dashboard'

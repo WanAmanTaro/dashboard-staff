@@ -18,6 +18,7 @@ import {
   Menu,
   ShieldCheck,
   TrendingUp,
+  Trophy,
   UserCircle2,
   Users,
   X,
@@ -52,6 +53,7 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   'fungsi-penerbitan': 'Fungsi 4: Penerbitan',
   'fungsi-pentaksiran': 'Fungsi 5: Pentaksiran',
   'fungsi-pemikir': 'Fungsi 6: Pasukan Pemikir',
+  pencapaian: 'Pencapaian',
   'kompetensi-iab': 'Kompetensi IAB',
   'digital-competencies': 'Kompetensi Digital dan AI',
   'center-dashboard': 'Dashboard Pusat',
@@ -128,6 +130,12 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
       id: 'fungsi-pemikir',
       label: 'Fungsi 6: Pasukan Pemikir',
       icon: Lightbulb,
+      visible: true,
+    },
+    {
+      id: 'pencapaian',
+      label: 'Pencapaian',
+      icon: Trophy,
       visible: true,
     },
     {

@@ -15,6 +15,7 @@ import { DigitalCompetencyPage } from './pages/DigitalCompetencyPage';
 import { ExpertiseDirectoryPage } from './pages/ExpertiseDirectoryPage';
 import { KompetensiIabPage } from './pages/KompetensiIabPage';
 import { LoginPage } from './pages/LoginPage';
+import { PencapaianPage } from './pages/PencapaianPage';
 import { ProfessionalProfilePdfPage } from './pages/ProfessionalProfilePdfPage';
 import { ResearchAndPublicationPage } from './pages/ResearchAndPublicationPage';
 import { StaffFunctionsPage } from './pages/StaffFunctionsPage';
@@ -58,6 +59,7 @@ function canAccessRoute(route: AppRoute, account: UserAccount): boolean {
     case 'fungsi-penerbitan':
     case 'fungsi-pentaksiran':
     case 'fungsi-pemikir':
+    case 'pencapaian':
     case 'kompetensi-iab':
     case 'digital-competencies':
     case 'professional-pdf':
@@ -287,6 +289,13 @@ const AppContent: React.FC = () => {
           organizations={organizations}
           departments={departments}
           sysSettings={sysSettings}
+        />
+      )}
+
+      {resolvedRoute === 'pencapaian' && (
+        <PencapaianPage
+          userAccount={userAccount}
+          profiles={countableProfiles}
         />
       )}
 

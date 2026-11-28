@@ -193,6 +193,9 @@
         "coachExp": { "type": "string", "maxLength": 1500 },
         "projectExp": { "type": "string", "maxLength": 1500 },
         "professionalExp": { "type": "string", "maxLength": 1500 },
+        "iabTeachingList": { "type": "array" },
+        "schoolTeachingList": { "type": "array" },
+        "externalTeachingList": { "type": "array" },
         "status": { "type": "string", "enum": ["active", "draft"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" },
@@ -421,6 +424,28 @@
         "updatedBy": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "staffId", "uid", "trainings", "programManagements", "consultations", "npqelSupervisions", "programEvaluations", "thinkTankEntries", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "StaffAchievementsRecord": {
+      "title": "StaffAchievementsRecord",
+      "description": "Rekod Pencapaian pegawai merangkumi APC, Inovasi/Kreativiti/Penambahbaikan, Penerbitan & Penyelidikan, dan Lain-lain Pencapaian/Pengiktirafan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "apcAwards": { "type": "array" },
+        "innovations": { "type": "array" },
+        "researchOutputs": { "type": "array" },
+        "otherAchievements": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "apcAwards", "innovations", "researchOutputs", "otherAchievements", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
     }
   },
   "firestore": {
@@ -467,6 +492,10 @@
     "/staff_functions/{fnId}": {
       "schema": { "$ref": "#/entities/StaffFunctionsRecord" },
       "description": "Rekod Fungsi 1, 2, 5 dan 6 pegawai IAB."
+    },
+    "/staff_achievements/{achId}": {
+      "schema": { "$ref": "#/entities/StaffAchievementsRecord" },
+      "description": "Rekod Pencapaian pegawai IAB (APC, Inovasi, Penerbitan & Penyelidikan, Lain-lain Pencapaian)."
     },
     "/publications/{pubId}": {
       "schema": { "$ref": "#/entities/Publication" },

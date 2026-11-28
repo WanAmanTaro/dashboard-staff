@@ -194,12 +194,11 @@ service cloud.firestore {
           && incoming().updatedBy == request.auth.uid
         )
         || (
-          existing().uid == ''
-          && 'staffId' in u
+          'staffId' in u
           && u.staffId is string
           && u.staffId != ''
           && existing().staffId == u.staffId
-          && incoming().uid == request.auth.uid
+          && (incoming().uid == request.auth.uid || incoming().uid == existing().uid)
           && incoming().createdBy == existing().createdBy
           && incoming().updatedBy == request.auth.uid
         )
@@ -413,7 +412,8 @@ service cloud.firestore {
         'id', 'staffId', 'uid', 'centerId', 'departmentId', 'primaryExpertise', 'secondaryExpertise',
         'specializations', 'researchAreas', 'teachingAreas', 'trainingAreas', 'keywords',
         'teachingExp', 'managementExp', 'facilitatorExp', 'speakerExp', 'coachExp',
-        'projectExp', 'professionalExp', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+        'projectExp', 'professionalExp', 'iabTeachingList', 'schoolTeachingList', 'externalTeachingList',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
       ])
       && isValidId(data.id)
       && isValidId(data.staffId)
@@ -434,6 +434,39 @@ service cloud.firestore {
       && isValidString(data.coachExp, 0, 1500)
       && isValidString(data.projectExp, 0, 1500)
       && isValidString(data.professionalExp, 0, 1500)
+      && (!('iabTeachingList' in data) || (
+        data.iabTeachingList is list && data.iabTeachingList.size() <= 100
+        && (data.iabTeachingList.size() == 0 || (
+          data.iabTeachingList[0] is map
+          && data.iabTeachingList[0].keys().hasOnly(['id', 'moduleOrField', 'teachingType', 'years'])
+          && data.iabTeachingList[0].id is string && data.iabTeachingList[0].id.size() <= 64
+          && data.iabTeachingList[0].moduleOrField is string && data.iabTeachingList[0].moduleOrField.size() >= 1 && data.iabTeachingList[0].moduleOrField.size() <= 200
+          && data.iabTeachingList[0].teachingType is string && data.iabTeachingList[0].teachingType.size() <= 60
+          && data.iabTeachingList[0].years is number && data.iabTeachingList[0].years >= 0 && data.iabTeachingList[0].years <= 60
+        ))
+      ))
+      && (!('schoolTeachingList' in data) || (
+        data.schoolTeachingList is list && data.schoolTeachingList.size() <= 100
+        && (data.schoolTeachingList.size() == 0 || (
+          data.schoolTeachingList[0] is map
+          && data.schoolTeachingList[0].keys().hasOnly(['id', 'subject', 'years'])
+          && data.schoolTeachingList[0].id is string && data.schoolTeachingList[0].id.size() <= 64
+          && data.schoolTeachingList[0].subject is string && data.schoolTeachingList[0].subject.size() >= 1 && data.schoolTeachingList[0].subject.size() <= 200
+          && data.schoolTeachingList[0].years is number && data.schoolTeachingList[0].years >= 0 && data.schoolTeachingList[0].years <= 60
+        ))
+      ))
+      && (!('externalTeachingList' in data) || (
+        data.externalTeachingList is list && data.externalTeachingList.size() <= 100
+        && (data.externalTeachingList.size() == 0 || (
+          data.externalTeachingList[0] is map
+          && data.externalTeachingList[0].keys().hasOnly(['id', 'institution', 'moduleOrField', 'teachingType', 'years'])
+          && data.externalTeachingList[0].id is string && data.externalTeachingList[0].id.size() <= 64
+          && data.externalTeachingList[0].institution is string && data.externalTeachingList[0].institution.size() >= 1 && data.externalTeachingList[0].institution.size() <= 200
+          && data.externalTeachingList[0].moduleOrField is string && data.externalTeachingList[0].moduleOrField.size() >= 1 && data.externalTeachingList[0].moduleOrField.size() <= 200
+          && data.externalTeachingList[0].teachingType is string && data.externalTeachingList[0].teachingType.size() <= 60
+          && data.externalTeachingList[0].years is number && data.externalTeachingList[0].years >= 0 && data.externalTeachingList[0].years <= 60
+        ))
+      ))
       && data.status in ['active', 'draft']
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
@@ -757,6 +790,56 @@ service cloud.firestore {
       && isValidString(data.updatedBy, 1, 128);
     }
 
+    function isValidStaffAchievements(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId',
+        'apcAwards', 'innovations', 'researchOutputs', 'otherAchievements',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId',
+        'apcAwards', 'innovations', 'researchOutputs', 'otherAchievements',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && data.id == data.staffId
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.apcAwards is list && data.apcAwards.size() <= 100
+      && (data.apcAwards.size() == 0 || (
+        data.apcAwards[0] is map
+        && data.apcAwards[0].keys().hasOnly(['id', 'awardName', 'year', 'certificateId', 'certificateTitle', 'certificateDriveFileId', 'fileName'])
+        && data.apcAwards[0].id is string && data.apcAwards[0].id.size() <= 64
+        && data.apcAwards[0].awardName is string && data.apcAwards[0].awardName.size() >= 1 && data.apcAwards[0].awardName.size() <= 160
+        && data.apcAwards[0].year is string && data.apcAwards[0].year.size() <= 16
+      ))
+      && data.innovations is list && data.innovations.size() <= 100
+      && (data.innovations.size() == 0 || (
+        data.innovations[0] is map
+        && data.innovations[0].keys().hasOnly(['id', 'projectName', 'innovationType', 'role', 'level', 'recognition', 'year', 'evidenceUrl', 'evidenceDriveFileId', 'evidenceFileName'])
+        && data.innovations[0].id is string && data.innovations[0].id.size() <= 64
+        && data.innovations[0].projectName is string && data.innovations[0].projectName.size() >= 1 && data.innovations[0].projectName.size() <= 240
+      ))
+      && data.researchOutputs is list && data.researchOutputs.size() <= 100
+      && (data.researchOutputs.size() == 0 || (
+        data.researchOutputs[0] is map
+        && data.researchOutputs[0].keys().hasOnly(['id', 'outputType', 'title', 'role', 'publisherOrJournal', 'identifier', 'year', 'indexing', 'field', 'url', 'evidenceDriveFileId', 'evidenceFileName'])
+        && data.researchOutputs[0].id is string && data.researchOutputs[0].id.size() <= 64
+        && data.researchOutputs[0].title is string && data.researchOutputs[0].title.size() >= 1 && data.researchOutputs[0].title.size() <= 300
+      ))
+      && data.otherAchievements is list && data.otherAchievements.size() <= 100
+      && (data.otherAchievements.size() == 0 || (
+        data.otherAchievements[0] is map
+        && data.otherAchievements[0].keys().hasOnly(['id', 'title', 'achievementType', 'description', 'role', 'organization', 'level', 'dateOrYear', 'impact', 'evidenceUrl', 'evidenceDriveFileId', 'evidenceFileName', 'notes'])
+        && data.otherAchievements[0].id is string && data.otherAchievements[0].id.size() <= 64
+        && data.otherAchievements[0].title is string && data.otherAchievements[0].title.size() >= 1 && data.otherAchievements[0].title.size() <= 240
+      ))
+      && data.status in ['active', 'draft']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
     // =========================================================
     // COLLECTION MATCH BLOCKS
     // =========================================================
@@ -1005,6 +1088,27 @@ service cloud.firestore {
       allow update: if isVerified() && isValidId(fnId) && isValidStaffFunctions(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId
         && canUpdateOwnedStaffRecord();
       allow delete: if isAdmin() && isValidId(fnId);
+    }
+
+    // 8d. staff_achievements
+    match /staff_achievements/{achId} {
+      allow get: if isValidId(achId) && (
+        (resource == null && canReadMissingDirectoryDocForStaff(achId))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userHasAnyStaffId() && resource.data.staffId == userDoc().staffId)
+          || userCenterIdMatches(resource.data.centerId)
+          || userDepartmentIdMatches(resource.data.departmentId)
+          || (isL3OrL4() && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(achId) && isValidStaffAchievements(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == achId
+        && canCreateOwnedStaffRecord(achId, incoming());
+      allow update: if isVerified() && isValidId(achId) && isValidStaffAchievements(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId
+        && canUpdateOwnedStaffRecord();
+      allow delete: if isAdmin() && isValidId(achId);
     }
 
     // 9. publications

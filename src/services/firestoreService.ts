@@ -33,6 +33,8 @@ import {
 } from '../lib/constants';
 import type {
   AccountStatus,
+  AchievementResearchRecord,
+  ApcAwardRecord,
   AuditLog,
   Certificate,
   CompetencyItem,
@@ -45,17 +47,23 @@ import type {
   IabCertItem,
   IabCompetencyRecord,
   IabModuleContribution,
+  InnovationRecord,
   NpqelSupervisionRecord,
   OrganizationCenter,
+  OtherAchievementRecord,
   ProfilePhoto,
   ProgramEvaluationRecord,
   ProgramManagementRecord,
   Publication,
   Qualification,
+  StaffAchievementsRecord,
   StaffFunctionsRecord,
   StaffPrivatePII,
   StaffProfile,
   SystemSetting,
+  TeachingExternalEntry,
+  TeachingIabEntry,
+  TeachingSchoolEntry,
   ThinkTankRecord,
   TrainingRecord,
   UserAccount,
@@ -532,6 +540,8 @@ export async function getStaffProfileBundle(
   expertise: ExpertiseRecord | null;
   competencies: CompetencyRecord | null;
   iabCompetencies: IabCompetencyRecord | null;
+  staffFunctions: StaffFunctionsRecord | null;
+  staffAchievements: StaffAchievementsRecord | null;
   publications: Publication[];
   certificates: Certificate[];
   photo: ProfilePhoto | null;
@@ -563,11 +573,23 @@ export async function getStaffProfileBundle(
       ? buildScopedStaffSubQuery('certificates', staffId, viewer)
       : null;
 
-    const [qualSnap, expSnap, compSnap, iabCompSnap, pubSnap, certSnap, photoSnap] = await Promise.all([
+    const [
+      qualSnap,
+      expSnap,
+      compSnap,
+      iabCompSnap,
+      fnSnap,
+      achSnap,
+      pubSnap,
+      certSnap,
+      photoSnap,
+    ] = await Promise.all([
       qualQuery ? getDocs(qualQuery) : Promise.resolve(null),
       getDoc(doc(db, 'expertise', staffId)).catch(() => null),
       getDoc(doc(db, 'competencies', staffId)).catch(() => null),
       getDoc(doc(db, 'iab_competencies', staffId)).catch(() => null),
+      getDoc(doc(db, 'staff_functions', staffId)).catch(() => null),
+      getDoc(doc(db, 'staff_achievements', staffId)).catch(() => null),
       pubQuery ? getDocs(pubQuery) : Promise.resolve(null),
       certQuery ? getDocs(certQuery).catch(() => null) : Promise.resolve(null),
       getDoc(doc(db, 'profile_photos', staffId)).catch(() => null),
@@ -585,6 +607,10 @@ export async function getStaffProfileBundle(
       competencies: compSnap && compSnap.exists() ? (compSnap.data() as CompetencyRecord) : null,
       iabCompetencies:
         iabCompSnap && iabCompSnap.exists() ? (iabCompSnap.data() as IabCompetencyRecord) : null,
+      staffFunctions:
+        fnSnap && fnSnap.exists() ? (fnSnap.data() as StaffFunctionsRecord) : null,
+      staffAchievements:
+        achSnap && achSnap.exists() ? (achSnap.data() as StaffAchievementsRecord) : null,
       publications: pubSnap
         ? pubSnap.docs
             .map((d) => d.data() as Publication)
@@ -1142,7 +1168,7 @@ export async function saveStaffCompetencies(params: {
   let compOp: OperationType = OperationType.WRITE;
   try {
     const compRef = doc(db, 'competencies', staffId);
-    const existingComp = await getDoc(compRef);
+    const existingComp = await getDocFromServer(compRef).catch(() => getDoc(compRef));
     const compMutableFields = {
       centerId: safeCenterId,
       departmentId: safeDepartmentId,
@@ -1154,7 +1180,10 @@ export async function saveStaffCompetencies(params: {
     if (existingComp.exists()) {
       compOp = OperationType.UPDATE;
       const existingData = existingComp.data() as Record<string, unknown>;
-      const isClaimingUid = existingData.uid === '' && Boolean(params.uid);
+      const isOwnerSaving = Boolean(params.uid) && params.uid === actorUid;
+      const isClaimingUid =
+        Boolean(params.uid) &&
+        (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
       await updateDoc(
         compRef,
         isClaimingUid ? { uid: String(params.uid).slice(0, 128), ...compMutableFields } : compMutableFields
@@ -1164,7 +1193,7 @@ export async function saveStaffCompetencies(params: {
       await setDoc(compRef, {
         id: staffId,
         staffId,
-        uid: String(params.uid || actorUid).slice(0, 128),
+        uid: String(params.uid || '').slice(0, 128),
         ...compMutableFields,
         createdAt: serverTimestamp(),
         createdBy: actorUid,
@@ -1304,7 +1333,7 @@ export async function saveIabCompetencies(params: {
   let op: OperationType = OperationType.WRITE;
   try {
     const ref = doc(db, 'iab_competencies', staffId);
-    const existing = await getDoc(ref);
+    const existing = await getDocFromServer(ref).catch(() => getDoc(ref));
     const mutableFields = {
       centerId: safeCenterId,
       departmentId: safeDepartmentId,
@@ -1314,11 +1343,14 @@ export async function saveIabCompetencies(params: {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid,
     };
-    let finalUid = String(params.uid || actorUid).slice(0, 128);
+    let finalUid = String(params.uid || '').slice(0, 128);
     if (existing.exists()) {
       op = OperationType.UPDATE;
       const existingData = existing.data() as Record<string, unknown>;
-      const isClaimingUid = existingData.uid === '' && Boolean(params.uid);
+      const isOwnerSaving = Boolean(params.uid) && params.uid === actorUid;
+      const isClaimingUid =
+        Boolean(params.uid) &&
+        (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
       finalUid = String(isClaimingUid ? params.uid : existingData.uid || finalUid).slice(0, 128);
       await updateDoc(
         ref,
@@ -1854,6 +1886,54 @@ export async function getGenderMapForProfiles(
 // =========================================================
 // STANDALONE EXPERTISE & TEACHING EXPERIENCE SAVE
 // =========================================================
+export function sanitizeIabTeaching(list: TeachingIabEntry[] | undefined): TeachingIabEntry[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => {
+      const parsed = Number(item.years);
+      const years = Number.isFinite(parsed) ? Math.max(0, Math.min(60, Math.round(parsed * 10) / 10)) : 0;
+      return {
+        id: String(item.id || '').trim().slice(0, 64) || makeRecordId('TIAB'),
+        moduleOrField: String(item.moduleOrField || '').trim().slice(0, 200),
+        teachingType: String(item.teachingType || '').trim().slice(0, 60),
+        years,
+      };
+    })
+    .filter((i) => i.moduleOrField.length > 0);
+}
+
+export function sanitizeSchoolTeaching(list: TeachingSchoolEntry[] | undefined): TeachingSchoolEntry[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => {
+      const parsed = Number(item.years);
+      const years = Number.isFinite(parsed) ? Math.max(0, Math.min(60, Math.round(parsed * 10) / 10)) : 0;
+      return {
+        id: String(item.id || '').trim().slice(0, 64) || makeRecordId('TSCH'),
+        subject: String(item.subject || '').trim().slice(0, 200),
+        years,
+      };
+    })
+    .filter((i) => i.subject.length > 0);
+}
+
+export function sanitizeExternalTeaching(list: TeachingExternalEntry[] | undefined): TeachingExternalEntry[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => {
+      const parsed = Number(item.years);
+      const years = Number.isFinite(parsed) ? Math.max(0, Math.min(60, Math.round(parsed * 10) / 10)) : 0;
+      return {
+        id: String(item.id || '').trim().slice(0, 64) || makeRecordId('TEXT'),
+        institution: String(item.institution || '').trim().slice(0, 200),
+        moduleOrField: String(item.moduleOrField || '').trim().slice(0, 200),
+        teachingType: String(item.teachingType || '').trim().slice(0, 60),
+        years,
+      };
+    })
+    .filter((i) => i.institution.length > 0 && i.moduleOrField.length > 0);
+}
+
 export async function saveStaffExpertise(params: {
   expertise: Omit<ExpertiseRecord, 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>;
   completion?: { completionPercent: number; missingSections: string[] };
@@ -1876,6 +1956,21 @@ export async function saveStaffExpertise(params: {
   const primaryExpertise = String(params.expertise.primaryExpertise || '').trim().slice(0, 160);
   const secondaryExpertise = String(params.expertise.secondaryExpertise || '').trim().slice(0, 160);
 
+  const optionalLists: {
+    iabTeachingList?: TeachingIabEntry[];
+    schoolTeachingList?: TeachingSchoolEntry[];
+    externalTeachingList?: TeachingExternalEntry[];
+  } = {};
+  if (params.expertise.iabTeachingList !== undefined) {
+    optionalLists.iabTeachingList = sanitizeIabTeaching(params.expertise.iabTeachingList);
+  }
+  if (params.expertise.schoolTeachingList !== undefined) {
+    optionalLists.schoolTeachingList = sanitizeSchoolTeaching(params.expertise.schoolTeachingList);
+  }
+  if (params.expertise.externalTeachingList !== undefined) {
+    optionalLists.externalTeachingList = sanitizeExternalTeaching(params.expertise.externalTeachingList);
+  }
+
   const expMutableFields = {
     centerId: safeCenterId,
     departmentId: safeDepartmentId,
@@ -1893,32 +1988,43 @@ export async function saveStaffExpertise(params: {
     coachExp: String(params.expertise.coachExp || '').trim().slice(0, 1500),
     projectExp: String(params.expertise.projectExp || '').trim().slice(0, 1500),
     professionalExp: String(params.expertise.professionalExp || '').trim().slice(0, 1500),
+    ...optionalLists,
     status: params.expertise.status === 'draft' ? ('draft' as const) : ('active' as const),
     updatedAt: serverTimestamp(),
     updatedBy: actorUid,
   };
 
   let op: OperationType = OperationType.WRITE;
+  let existingDataForDiag: Record<string, unknown> | null = null;
+  let writePayloadForDiag: Record<string, unknown> = expMutableFields;
   try {
     const expRef = doc(db, 'expertise', staffId);
-    const existing = await getDoc(expRef);
-    let finalUid = String(params.expertise.uid || actorUid).slice(0, 128);
+    const existing = await getDocFromServer(expRef).catch(() => getDoc(expRef));
+    let finalUid = String(params.expertise.uid || '').slice(0, 128);
     if (existing.exists()) {
       op = OperationType.UPDATE;
       const existingData = existing.data() as Record<string, unknown>;
-      const isClaimingUid = existingData.uid === '' && Boolean(params.expertise.uid);
+      existingDataForDiag = existingData;
+      const isOwnerSaving = Boolean(params.expertise.uid) && params.expertise.uid === actorUid;
+      const isClaimingUid =
+        Boolean(params.expertise.uid) &&
+        (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
       finalUid = String(isClaimingUid ? params.expertise.uid : existingData.uid || finalUid).slice(0, 128);
-      await updateDoc(expRef, isClaimingUid ? { uid: finalUid, ...expMutableFields } : expMutableFields);
+      writePayloadForDiag = isClaimingUid
+        ? { uid: finalUid, ...expMutableFields }
+        : expMutableFields;
+      await updateDoc(expRef, writePayloadForDiag);
     } else {
       op = OperationType.CREATE;
-      await setDoc(expRef, {
+      writePayloadForDiag = {
         id: staffId,
         staffId,
         uid: finalUid,
         ...expMutableFields,
         createdAt: serverTimestamp(),
         createdBy: actorUid,
-      });
+      };
+      await setDoc(expRef, writePayloadForDiag);
     }
 
     const profileRef = doc(db, 'staff_profiles', staffId);
@@ -1947,7 +2053,7 @@ export async function saveStaffExpertise(params: {
       targetId: staffId,
       staffId,
       outcome: 'success',
-      details: `Mengemas kini kepakaran & pengalaman mengajar (${primaryExpertise || 'Umum'}).`,
+      details: `Mengemas kini pengalaman mengajar (${(optionalLists.iabTeachingList || []).length} IAB, ${(optionalLists.schoolTeachingList || []).length} Sekolah, ${(optionalLists.externalTeachingList || []).length} Luar).`,
     });
 
     return {
@@ -1958,6 +2064,121 @@ export async function saveStaffExpertise(params: {
       createdBy: actorUid,
     };
   } catch (err) {
+    const baseMsg = err instanceof Error ? err.message : String(err);
+    if (baseMsg.toLowerCase().includes('permission')) {
+      try {
+        const expRef = doc(db, 'expertise', staffId);
+        const uSnap = await getDocFromServer(doc(db, 'users', actorUid)).catch(() => null);
+        const uData = uSnap && uSnap.exists() ? (uSnap.data() as Record<string, unknown>) : null;
+        const sSnap = await getDocFromServer(expRef).catch(() => null);
+        const sData = sSnap && sSnap.exists() ? (sSnap.data() as Record<string, unknown>) : existingDataForDiag;
+        const expectedExpKeys = [
+          'id', 'staffId', 'uid', 'centerId', 'departmentId', 'primaryExpertise', 'secondaryExpertise',
+          'specializations', 'researchAreas', 'teachingAreas', 'trainingAreas', 'keywords',
+          'teachingExp', 'managementExp', 'facilitatorExp', 'speakerExp', 'coachExp',
+          'projectExp', 'professionalExp', 'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+        ];
+        const allowedExpKeys = [
+          ...expectedExpKeys,
+          'iabTeachingList', 'schoolTeachingList', 'externalTeachingList',
+        ];
+        const summarizeVal = (v: unknown) => {
+          if (Array.isArray(v)) {
+            const first = v[0];
+            return {
+              t: 'list',
+              len: v.length,
+              firstType: first === null ? 'null' : typeof first,
+              firstKeys: first && typeof first === 'object' ? Object.keys(first as Record<string, unknown>) : null,
+            };
+          }
+          if (typeof v === 'string') return { t: 's', len: v.length };
+          if (typeof v === 'boolean' || typeof v === 'number') return { t: typeof v, val: v };
+          return { t: v === null ? 'null' : typeof v };
+        };
+
+        let minUpdateProbe: string | null = null;
+        const failingFields: Record<string, string> = {};
+        const failingFieldStats: Record<string, unknown> = {};
+        if (op === OperationType.UPDATE) {
+          try {
+            await updateDoc(expRef, { updatedAt: serverTimestamp(), updatedBy: actorUid });
+            minUpdateProbe = 'ok';
+          } catch (e: unknown) {
+            minUpdateProbe = e instanceof Error ? e.message : String(e);
+          }
+          if (minUpdateProbe === 'ok') {
+            for (const [k, v] of Object.entries(writePayloadForDiag)) {
+              if (k === 'updatedAt' || k === 'updatedBy') continue;
+              try {
+                await updateDoc(expRef, {
+                  [k]: v,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: actorUid,
+                });
+              } catch (e: unknown) {
+                failingFields[k] = e instanceof Error ? e.message : String(e);
+                failingFieldStats[k] = summarizeVal(v);
+              }
+            }
+          }
+        }
+
+        const sKeys = sData ? Object.keys(sData) : [];
+        const existingFieldStats = sData
+          ? {
+              centerId: summarizeVal(sData.centerId),
+              departmentId: summarizeVal(sData.departmentId),
+              primaryExpertise: summarizeVal(sData.primaryExpertise),
+              secondaryExpertise: summarizeVal(sData.secondaryExpertise),
+              status: summarizeVal(sData.status),
+              createdAtType: sData.createdAt === null ? 'null' : typeof sData.createdAt,
+              updatedAtType: sData.updatedAt === null ? 'null' : typeof sData.updatedAt,
+              specializations: summarizeVal(sData.specializations),
+              researchAreas: summarizeVal(sData.researchAreas),
+              teachingAreas: summarizeVal(sData.teachingAreas),
+              trainingAreas: summarizeVal(sData.trainingAreas),
+              keywords: summarizeVal(sData.keywords),
+              iabTeachingList: 'iabTeachingList' in sData ? summarizeVal(sData.iabTeachingList) : 'absent',
+              schoolTeachingList: 'schoolTeachingList' in sData ? summarizeVal(sData.schoolTeachingList) : 'absent',
+              externalTeachingList: 'externalTeachingList' in sData ? summarizeVal(sData.externalTeachingList) : 'absent',
+            }
+          : null;
+
+        const diag = JSON.stringify({
+          op,
+          emailVerified: Boolean(auth.currentUser?.emailVerified),
+          payloadKeysCount: Object.keys(writePayloadForDiag).length,
+          userGate: uData
+            ? {
+                status: uData.status,
+                role: uData.role,
+                isAdmin: uData.isAdmin,
+                staffIdMatches: uData.staffId === staffId,
+              }
+            : { fetched: false },
+          existingGate: sData
+            ? {
+                uidMatchesActor: sData.uid === actorUid,
+                uidIsEmpty: sData.uid === '',
+                idMatchesStaffId: sData.id === staffId,
+                staffIdMatches: sData.staffId === staffId,
+                hasCreatedAt: 'createdAt' in sData,
+                createdByLen: typeof sData.createdBy === 'string' ? sData.createdBy.length : null,
+                missingKeys: expectedExpKeys.filter((k) => !sKeys.includes(k)),
+                extraKeys: sKeys.filter((k) => !allowedExpKeys.includes(k)),
+              }
+            : null,
+          minUpdateProbe,
+          failingFields,
+          failingFieldStats,
+          existingFieldStats,
+        });
+        handleFirestoreError(new Error(`${baseMsg} [diag:${diag}]`), op, expPath);
+      } catch (diagThrow) {
+        if (diagThrow !== err) throw diagThrow;
+      }
+    }
     handleFirestoreError(err, op, expPath);
   }
 }
@@ -2096,7 +2317,7 @@ export async function saveStaffFunctions(params: {
   let op: OperationType = OperationType.WRITE;
   try {
     const ref = doc(db, 'staff_functions', staffId);
-    const existing = await getDoc(ref);
+    const existing = await getDocFromServer(ref).catch(() => getDoc(ref));
     const mutableFields = {
       centerId: safeCenterId,
       departmentId: safeDepartmentId,
@@ -2111,11 +2332,14 @@ export async function saveStaffFunctions(params: {
       updatedBy: actorUid,
     };
 
-    let finalUid = String(params.uid || actorUid).slice(0, 128);
+    let finalUid = String(params.uid || '').slice(0, 128);
     if (existing.exists()) {
       op = OperationType.UPDATE;
       const existingData = existing.data() as Record<string, unknown>;
-      const isClaimingUid = existingData.uid === '' && Boolean(params.uid);
+      const isOwnerSaving = Boolean(params.uid) && params.uid === actorUid;
+      const isClaimingUid =
+        Boolean(params.uid) &&
+        (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
       finalUid = String(isClaimingUid ? params.uid : existingData.uid || finalUid).slice(0, 128);
       await updateDoc(ref, isClaimingUid ? { uid: finalUid, ...mutableFields } : mutableFields);
     } else {
@@ -2151,6 +2375,188 @@ export async function saveStaffFunctions(params: {
       npqelSupervisions: safeNpqel,
       programEvaluations: safeEvaluations,
       thinkTankEntries: safeThinkTanks,
+      status: 'active',
+      createdBy: actorUid,
+      updatedBy: actorUid,
+    };
+  } catch (err) {
+    handleFirestoreError(err, op, path);
+  }
+}
+
+// =========================================================
+// PENCAPAIAN PEGAWAI (staff_achievements/{staffId})
+// =========================================================
+export function sanitizeApcAwards(list: ApcAwardRecord[]): ApcAwardRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('APC'),
+      awardName: String(item.awardName || '').trim().slice(0, 160),
+      year: String(item.year || '').trim().slice(0, 16),
+      certificateId: String(item.certificateId || '').trim().slice(0, 128),
+      certificateTitle: String(item.certificateTitle || '').trim().slice(0, 200),
+      certificateDriveFileId: String(item.certificateDriveFileId || '').trim().slice(0, 200),
+      fileName: String(item.fileName || '').trim().slice(0, 255),
+    }))
+    .filter((i) => i.awardName.length > 0);
+}
+
+export function sanitizeInnovations(list: InnovationRecord[]): InnovationRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('INV'),
+      projectName: String(item.projectName || '').trim().slice(0, 240),
+      innovationType: String(item.innovationType || '').trim().slice(0, 80),
+      role: String(item.role || '').trim().slice(0, 80),
+      level: String(item.level || '').trim().slice(0, 80),
+      recognition: String(item.recognition || '').trim().slice(0, 200),
+      year: String(item.year || '').trim().slice(0, 16),
+      evidenceUrl: String(item.evidenceUrl || '').trim().slice(0, 500),
+      evidenceDriveFileId: String(item.evidenceDriveFileId || '').trim().slice(0, 200),
+      evidenceFileName: String(item.evidenceFileName || '').trim().slice(0, 255),
+    }))
+    .filter((i) => i.projectName.length > 0);
+}
+
+export function sanitizeAchievementResearch(
+  list: AchievementResearchRecord[]
+): AchievementResearchRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('ACHR'),
+      outputType: String(item.outputType || '').trim().slice(0, 80),
+      title: String(item.title || '').trim().slice(0, 300),
+      role: String(item.role || '').trim().slice(0, 80),
+      publisherOrJournal: String(item.publisherOrJournal || '').trim().slice(0, 200),
+      identifier: String(item.identifier || '').trim().slice(0, 120),
+      year: String(item.year || '').trim().slice(0, 16),
+      indexing: String(item.indexing || '').trim().slice(0, 80),
+      field: String(item.field || '').trim().slice(0, 160),
+      url: String(item.url || '').trim().slice(0, 500),
+      evidenceDriveFileId: String(item.evidenceDriveFileId || '').trim().slice(0, 200),
+      evidenceFileName: String(item.evidenceFileName || '').trim().slice(0, 255),
+    }))
+    .filter((i) => i.title.length > 0);
+}
+
+export function sanitizeOtherAchievements(
+  list: OtherAchievementRecord[]
+): OtherAchievementRecord[] {
+  return (list || [])
+    .slice(0, 100)
+    .map((item) => ({
+      id: String(item.id || '').trim().slice(0, 64) || makeRecordId('OTHA'),
+      title: String(item.title || '').trim().slice(0, 240),
+      achievementType: String(item.achievementType || '').trim().slice(0, 160),
+      description: String(item.description || '').trim().slice(0, 500),
+      role: String(item.role || '').trim().slice(0, 80),
+      organization: String(item.organization || '').trim().slice(0, 200),
+      level: String(item.level || '').trim().slice(0, 80),
+      dateOrYear: String(item.dateOrYear || '').trim().slice(0, 64),
+      impact: String(item.impact || '').trim().slice(0, 500),
+      evidenceUrl: String(item.evidenceUrl || '').trim().slice(0, 500),
+      evidenceDriveFileId: String(item.evidenceDriveFileId || '').trim().slice(0, 200),
+      evidenceFileName: String(item.evidenceFileName || '').trim().slice(0, 255),
+      notes: String(item.notes || '').trim().slice(0, 500),
+    }))
+    .filter((i) => i.title.length > 0);
+}
+
+export async function getStaffAchievements(
+  staffId: string
+): Promise<StaffAchievementsRecord | null> {
+  const path = `staff_achievements/${staffId}`;
+  try {
+    const snap = await getDoc(doc(db, 'staff_achievements', staffId));
+    return snap.exists() ? (snap.data() as StaffAchievementsRecord) : null;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+  }
+}
+
+export async function saveStaffAchievements(params: {
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  apcAwards: ApcAwardRecord[];
+  innovations: InnovationRecord[];
+  researchOutputs: AchievementResearchRecord[];
+  otherAchievements: OtherAchievementRecord[];
+}): Promise<StaffAchievementsRecord> {
+  const actorUid = auth.currentUser?.uid;
+  if (!actorUid) {
+    throw new Error('Sesi pengesahan telah tamat. Sila log masuk semula sebelum menyimpan rekod pencapaian.');
+  }
+  const staffId = params.staffId;
+  const path = `staff_achievements/${staffId}`;
+  const safeCenterId = String(params.centerId || '').slice(0, 64);
+  const safeDepartmentId = String(params.departmentId || '').slice(0, 64);
+  const safeApc = sanitizeApcAwards(params.apcAwards);
+  const safeInnovations = sanitizeInnovations(params.innovations);
+  const safeResearch = sanitizeAchievementResearch(params.researchOutputs);
+  const safeOthers = sanitizeOtherAchievements(params.otherAchievements);
+
+  let op: OperationType = OperationType.WRITE;
+  try {
+    const ref = doc(db, 'staff_achievements', staffId);
+    const existing = await getDocFromServer(ref).catch(() => getDoc(ref));
+    const mutableFields = {
+      centerId: safeCenterId,
+      departmentId: safeDepartmentId,
+      apcAwards: safeApc,
+      innovations: safeInnovations,
+      researchOutputs: safeResearch,
+      otherAchievements: safeOthers,
+      status: 'active' as const,
+      updatedAt: serverTimestamp(),
+      updatedBy: actorUid,
+    };
+
+    let finalUid = String(params.uid || '').slice(0, 128);
+    if (existing.exists()) {
+      op = OperationType.UPDATE;
+      const existingData = existing.data() as Record<string, unknown>;
+      const isOwnerSaving = Boolean(params.uid) && params.uid === actorUid;
+      const isClaimingUid =
+        Boolean(params.uid) &&
+        (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
+      finalUid = String(isClaimingUid ? params.uid : existingData.uid || finalUid).slice(0, 128);
+      await updateDoc(ref, isClaimingUid ? { uid: finalUid, ...mutableFields } : mutableFields);
+    } else {
+      op = OperationType.CREATE;
+      await setDoc(ref, {
+        id: staffId,
+        staffId,
+        uid: finalUid,
+        ...mutableFields,
+        createdAt: serverTimestamp(),
+        createdBy: actorUid,
+      });
+    }
+
+    await logAudit({
+      actionType: 'UPDATE_STAFF_ACHIEVEMENTS',
+      targetType: 'staff_achievements',
+      targetId: staffId,
+      staffId,
+      outcome: 'success',
+      details: `Mengemas kini rekod pencapaian (${safeApc.length} APC, ${safeInnovations.length} inovasi, ${safeResearch.length} penulisan/penyelidikan, ${safeOthers.length} lain-lain).`,
+    });
+
+    return {
+      id: staffId,
+      staffId,
+      uid: finalUid,
+      centerId: safeCenterId,
+      departmentId: safeDepartmentId,
+      apcAwards: safeApc,
+      innovations: safeInnovations,
+      researchOutputs: safeResearch,
+      otherAchievements: safeOthers,
       status: 'active',
       createdBy: actorUid,
       updatedBy: actorUid,
