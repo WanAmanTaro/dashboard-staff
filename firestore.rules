@@ -107,6 +107,38 @@ service cloud.firestore {
       return arr is list && arr.size() <= maxItems && (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 160));
     }
 
+    function isValidNumberRange(val, minInt, maxInt, minFloat, maxFloat) {
+      return (val is int && val >= minInt && val <= maxInt)
+        || (val is float && val >= minFloat && val <= maxFloat);
+    }
+
+    function isValidIabTeachingEntry(entry) {
+      return entry is map
+        && entry.keys().hasOnly(['id', 'moduleOrField', 'teachingType', 'years'])
+        && 'id' in entry && entry.id is string && entry.id.size() >= 1 && entry.id.size() <= 64
+        && 'moduleOrField' in entry && entry.moduleOrField is string && entry.moduleOrField.size() >= 1 && entry.moduleOrField.size() <= 400
+        && 'teachingType' in entry && entry.teachingType is string && entry.teachingType.size() <= 100
+        && 'years' in entry && isValidNumberRange(entry.years, 0, 60, 0.0, 60.0);
+    }
+
+    function isValidSchoolTeachingEntry(entry) {
+      return entry is map
+        && entry.keys().hasOnly(['id', 'subject', 'years'])
+        && 'id' in entry && entry.id is string && entry.id.size() >= 1 && entry.id.size() <= 64
+        && 'subject' in entry && entry.subject is string && entry.subject.size() >= 1 && entry.subject.size() <= 400
+        && 'years' in entry && isValidNumberRange(entry.years, 0, 60, 0.0, 60.0);
+    }
+
+    function isValidExternalTeachingEntry(entry) {
+      return entry is map
+        && entry.keys().hasOnly(['id', 'institution', 'moduleOrField', 'teachingType', 'years'])
+        && 'id' in entry && entry.id is string && entry.id.size() >= 1 && entry.id.size() <= 64
+        && 'institution' in entry && entry.institution is string && entry.institution.size() >= 1 && entry.institution.size() <= 400
+        && 'moduleOrField' in entry && entry.moduleOrField is string && entry.moduleOrField.size() >= 1 && entry.moduleOrField.size() <= 400
+        && 'teachingType' in entry && entry.teachingType is string && entry.teachingType.size() <= 100
+        && 'years' in entry && isValidNumberRange(entry.years, 0, 60, 0.0, 60.0);
+    }
+
     function isServerTimestampWindow(ts) {
       return ts is timestamp
         && ts >= request.time - duration.value(10, 's')
@@ -303,12 +335,12 @@ service cloud.firestore {
       && isValidString(data.secondaryExpertise, 0, 160)
       && isValidStringList(data.digitalCompetencies, 60)
       && isValidStringList(data.expertiseKeywords, 30)
-      && data.completionPercent is number && data.completionPercent >= 0 && data.completionPercent <= 100
+      && isValidNumberRange(data.completionPercent, 0, 100, 0.0, 100.0)
       && isValidStringList(data.missingSections, 12)
       && data.hasPhoto is bool
       && isValidString(data.photoDisplayUrl, 0, 500)
-      && data.certificateCount is number && data.certificateCount >= 0 && data.certificateCount <= 500
-      && data.publicationCount is number && data.publicationCount >= 0 && data.publicationCount <= 500
+      && isValidNumberRange(data.certificateCount, 0, 500, 0.0, 500.0)
+      && isValidNumberRange(data.publicationCount, 0, 500, 0.0, 500.0)
       && data.status in ['active', 'inactive', 'draft']
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
@@ -334,7 +366,7 @@ service cloud.firestore {
       && isValidString(data.altContact, 0, 160)
       && isValidString(data.appointmentDate, 0, 32)
       && isValidString(data.serviceStatus, 0, 60)
-      && data.yearsOfService is number && data.yearsOfService >= 0 && data.yearsOfService <= 80
+      && isValidNumberRange(data.yearsOfService, 0, 80, 0.0, 80.0)
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
     }
@@ -436,36 +468,15 @@ service cloud.firestore {
       && isValidString(data.professionalExp, 0, 1500)
       && (!('iabTeachingList' in data) || (
         data.iabTeachingList is list && data.iabTeachingList.size() <= 100
-        && (data.iabTeachingList.size() == 0 || (
-          data.iabTeachingList[0] is map
-          && data.iabTeachingList[0].keys().hasOnly(['id', 'moduleOrField', 'teachingType', 'years'])
-          && data.iabTeachingList[0].id is string && data.iabTeachingList[0].id.size() <= 64
-          && data.iabTeachingList[0].moduleOrField is string && data.iabTeachingList[0].moduleOrField.size() >= 1 && data.iabTeachingList[0].moduleOrField.size() <= 200
-          && data.iabTeachingList[0].teachingType is string && data.iabTeachingList[0].teachingType.size() <= 60
-          && data.iabTeachingList[0].years is number && data.iabTeachingList[0].years >= 0 && data.iabTeachingList[0].years <= 60
-        ))
+        && (data.iabTeachingList.size() == 0 || isValidIabTeachingEntry(data.iabTeachingList[0]))
       ))
       && (!('schoolTeachingList' in data) || (
         data.schoolTeachingList is list && data.schoolTeachingList.size() <= 100
-        && (data.schoolTeachingList.size() == 0 || (
-          data.schoolTeachingList[0] is map
-          && data.schoolTeachingList[0].keys().hasOnly(['id', 'subject', 'years'])
-          && data.schoolTeachingList[0].id is string && data.schoolTeachingList[0].id.size() <= 64
-          && data.schoolTeachingList[0].subject is string && data.schoolTeachingList[0].subject.size() >= 1 && data.schoolTeachingList[0].subject.size() <= 200
-          && data.schoolTeachingList[0].years is number && data.schoolTeachingList[0].years >= 0 && data.schoolTeachingList[0].years <= 60
-        ))
+        && (data.schoolTeachingList.size() == 0 || isValidSchoolTeachingEntry(data.schoolTeachingList[0]))
       ))
       && (!('externalTeachingList' in data) || (
         data.externalTeachingList is list && data.externalTeachingList.size() <= 100
-        && (data.externalTeachingList.size() == 0 || (
-          data.externalTeachingList[0] is map
-          && data.externalTeachingList[0].keys().hasOnly(['id', 'institution', 'moduleOrField', 'teachingType', 'years'])
-          && data.externalTeachingList[0].id is string && data.externalTeachingList[0].id.size() <= 64
-          && data.externalTeachingList[0].institution is string && data.externalTeachingList[0].institution.size() >= 1 && data.externalTeachingList[0].institution.size() <= 200
-          && data.externalTeachingList[0].moduleOrField is string && data.externalTeachingList[0].moduleOrField.size() >= 1 && data.externalTeachingList[0].moduleOrField.size() <= 200
-          && data.externalTeachingList[0].teachingType is string && data.externalTeachingList[0].teachingType.size() <= 60
-          && data.externalTeachingList[0].years is number && data.externalTeachingList[0].years >= 0 && data.externalTeachingList[0].years <= 60
-        ))
+        && (data.externalTeachingList.size() == 0 || isValidExternalTeachingEntry(data.externalTeachingList[0]))
       ))
       && data.status in ['active', 'draft']
       && isValidString(data.createdBy, 1, 128)
@@ -587,7 +598,7 @@ service cloud.firestore {
       && isValidString(data.driveFolderId, 0, 200)
       && isValidString(data.fileName, 1, 255)
       && isValidString(data.mimeType, 1, 120)
-      && data.fileSize is number && data.fileSize >= 0 && data.fileSize <= 52428800
+      && isValidNumberRange(data.fileSize, 0, 52428800, 0.0, 52428800.0)
       && isValidString(data.uploadedBy, 1, 128)
       && data.status in ['active', 'replaced', 'deleted', 'orphan_pending']
       && isValidString(data.createdBy, 1, 128)
@@ -615,13 +626,14 @@ service cloud.firestore {
       && isValidString(data.displayDriveFileId, 1, 200)
       && isValidString(data.originalFileName, 1, 255)
       && isValidString(data.displayFileName, 1, 255)
-      && data.cropX is number && data.cropY is number && data.zoom is number
-      && data.zoom >= 0.5 && data.zoom <= 5
+      && isValidNumberRange(data.cropX, -10000, 10000, -10000.0, 10000.0)
+      && isValidNumberRange(data.cropY, -10000, 10000, -10000.0, 10000.0)
+      && isValidNumberRange(data.zoom, 1, 5, 0.5, 5.0)
       && data.alignX in ['left', 'center', 'right']
       && data.alignY in ['top', 'center', 'bottom']
       && data.aspectRatio == '1:1'
       && isValidString(data.mimeType, 1, 64)
-      && data.fileSize is number && data.fileSize >= 0 && data.fileSize <= 20971520
+      && isValidNumberRange(data.fileSize, 0, 20971520, 0.0, 20971520.0)
       && data.status in ['active', 'replaced', 'deleted']
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
@@ -644,10 +656,10 @@ service cloud.firestore {
       && data.folderIds is map
       && isValidString(data.lastConnectedAt, 0, 64)
       && isValidString(data.lastUploadAt, 0, 64)
-      && data.uploadedDocumentsCount is number && data.uploadedDocumentsCount >= 0
-      && data.uploadedPhotosCount is number && data.uploadedPhotosCount >= 0
-      && data.maxPhotoSizeMb is number && data.maxPhotoSizeMb >= 1 && data.maxPhotoSizeMb <= 50
-      && data.maxCertSizeMb is number && data.maxCertSizeMb >= 1 && data.maxCertSizeMb <= 100
+      && isValidNumberRange(data.uploadedDocumentsCount, 0, 1000000, 0.0, 1000000.0)
+      && isValidNumberRange(data.uploadedPhotosCount, 0, 1000000, 0.0, 1000000.0)
+      && isValidNumberRange(data.maxPhotoSizeMb, 1, 50, 1.0, 50.0)
+      && isValidNumberRange(data.maxCertSizeMb, 1, 100, 1.0, 100.0)
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
     }
@@ -773,10 +785,9 @@ service cloud.firestore {
       && data.programEvaluations is list && data.programEvaluations.size() <= 100
       && (data.programEvaluations.size() == 0 || (
         data.programEvaluations[0] is map
-        && data.programEvaluations[0].keys().hasOnly(['id', 'programName', 'centerId', 'centerName', 'departmentId', 'departmentName', 'role', 'year', 'score'])
+        && data.programEvaluations[0].keys().hasOnly(['id', 'programName', 'centerName', 'role', 'year', 'score'])
         && data.programEvaluations[0].id is string && data.programEvaluations[0].id.size() <= 64
-        && data.programEvaluations[0].programName is string && data.programEvaluations[0].programName.size() >= 1 && data.programEvaluations[0].programName.size() <= 200
-        && data.programEvaluations[0].score is number && data.programEvaluations[0].score >= 0 && data.programEvaluations[0].score <= 100
+        && data.programEvaluations[0].programName is string && data.programEvaluations[0].programName.size() >= 1 && data.programEvaluations[0].programName.size() <= 400
       ))
       && data.thinkTankEntries is list && data.thinkTankEntries.size() <= 100
       && (data.thinkTankEntries.size() == 0 || (
@@ -835,6 +846,33 @@ service cloud.firestore {
         && data.otherAchievements[0].id is string && data.otherAchievements[0].id.size() <= 64
         && data.otherAchievements[0].title is string && data.otherAchievements[0].title.size() >= 1 && data.otherAchievements[0].title.size() <= 240
       ))
+      && data.status in ['active', 'draft']
+      && isValidString(data.createdBy, 1, 128)
+      && isValidString(data.updatedBy, 1, 128);
+    }
+
+    function isValidTeachingExperience(data) {
+      return data.keys().hasAll([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId',
+        'iabTeachingList', 'schoolTeachingList', 'externalTeachingList',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ]) && data.keys().hasOnly([
+        'id', 'staffId', 'uid', 'centerId', 'departmentId',
+        'iabTeachingList', 'schoolTeachingList', 'externalTeachingList',
+        'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.staffId)
+      && data.id == data.staffId
+      && isValidString(data.uid, 0, 128)
+      && isValidString(data.centerId, 0, 64)
+      && isValidString(data.departmentId, 0, 64)
+      && data.iabTeachingList is list && data.iabTeachingList.size() <= 100
+      && (data.iabTeachingList.size() == 0 || isValidIabTeachingEntry(data.iabTeachingList[0]))
+      && data.schoolTeachingList is list && data.schoolTeachingList.size() <= 100
+      && (data.schoolTeachingList.size() == 0 || isValidSchoolTeachingEntry(data.schoolTeachingList[0]))
+      && data.externalTeachingList is list && data.externalTeachingList.size() <= 100
+      && (data.externalTeachingList.size() == 0 || isValidExternalTeachingEntry(data.externalTeachingList[0]))
       && data.status in ['active', 'draft']
       && isValidString(data.createdBy, 1, 128)
       && isValidString(data.updatedBy, 1, 128);
@@ -1109,6 +1147,27 @@ service cloud.firestore {
       allow update: if isVerified() && isValidId(achId) && isValidStaffAchievements(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId
         && canUpdateOwnedStaffRecord();
       allow delete: if isAdmin() && isValidId(achId);
+    }
+
+    // 8e. teaching_experiences
+    match /teaching_experiences/{expId} {
+      allow get: if isValidId(expId) && (
+        (resource == null && canReadMissingDirectoryDocForStaff(expId))
+        || (resource != null && canReadDirectoryOrScopedRecord(resource.data))
+      );
+      allow list: if isAdmin()
+        || (isActiveUser() && (
+          resource.data.uid == request.auth.uid
+          || (userHasAnyStaffId() && resource.data.staffId == userDoc().staffId)
+          || userCenterIdMatches(resource.data.centerId)
+          || userDepartmentIdMatches(resource.data.departmentId)
+          || (isL3OrL4() && resource.data.status == 'active')
+        ));
+      allow create: if isVerified() && isValidId(expId) && isValidTeachingExperience(incoming()) && hasCreatedTimestamps(incoming()) && incoming().id == expId
+        && canCreateOwnedStaffRecord(expId, incoming());
+      allow update: if isVerified() && isValidId(expId) && isValidTeachingExperience(incoming()) && hasUpdatedTimestamps(incoming()) && incoming().id == existing().id && incoming().staffId == existing().staffId
+        && canUpdateOwnedStaffRecord();
+      allow delete: if isAdmin() && isValidId(expId);
     }
 
     // 9. publications

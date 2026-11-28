@@ -98,7 +98,7 @@ export const KompetensiIabPage: React.FC<KompetensiIabPageProps> = ({
       ) : (
         <KompetensiIabSection
           staffId={selectedStaffId || userAccount.staffId}
-          uid={activeProfile?.uid || (isOwnRecord ? userAccount.uid : '')}
+          uid={isOwnRecord ? userAccount.uid : activeProfile?.uid || ''}
           centerId={activeProfile?.centerId || userAccount.centerId}
           departmentId={activeProfile?.departmentId || userAccount.departmentId}
           staffName={activeProfile?.fullName || userAccount.displayName}

@@ -120,6 +120,18 @@ export const PROGRAM_MANAGEMENT_ROLES: string[] = [
   'Urusetia',
 ];
 
+export const PROGRAM_EVALUATION_CENTERS: string[] = [
+  'Pusat Pengurusan Dasar dan Inovasi',
+  'Pusat Pentaksiran dan Pembangunan Bakat',
+  'Pusat Pembangunan dan Pengurusan Teknologi',
+  'Pusat Dokumentasi dan Sumber Pendidikan',
+  'Pusat Penyelidikan dan Penilaian',
+  'Pusat Pengurusan dan Pentadbiran Pendidikan',
+  'Pusat Pembangunan Kepimpinan Pendidikan',
+  'Pusat Konsultasi dan Pembangunan Organisasi Pendidikan',
+  'Pusat Pembangunan Komuniti',
+];
+
 export const CONSULTATION_TYPES: string[] = [
   'Khidmat Nasihat',
   'Bimbingan & Pementoran',

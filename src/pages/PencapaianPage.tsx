@@ -217,7 +217,7 @@ export const PencapaianPage: React.FC<PencapaianPageProps> = ({
     researchOutputs: AchievementResearchRecord[];
     otherAchievements: OtherAchievementRecord[];
   }) => {
-    const targetUid = activeProfile?.uid || (isOwnRecord ? userAccount.uid : '');
+    const targetUid = isOwnRecord ? userAccount.uid : activeProfile?.uid || '';
     const centerId = activeProfile?.centerId || userAccount.centerId || '';
     const departmentId = activeProfile?.departmentId || userAccount.departmentId || '';
     const saved = await saveStaffAchievements({

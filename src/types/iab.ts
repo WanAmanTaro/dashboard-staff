@@ -187,6 +187,22 @@ export interface TeachingExternalEntry {
   years: number;
 }
 
+export interface TeachingExperienceRecord {
+  id: string;
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  iabTeachingList: TeachingIabEntry[];
+  schoolTeachingList: TeachingSchoolEntry[];
+  externalTeachingList: TeachingExternalEntry[];
+  status: 'active' | 'draft';
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  createdBy: string;
+  updatedBy: string;
+}
+
 export interface ExpertiseRecord {
   id: string;
   staffId: string;
@@ -466,10 +482,7 @@ export interface NpqelSupervisionRecord {
 export interface ProgramEvaluationRecord {
   id: string;
   programName: string;
-  centerId: string;
   centerName: string;
-  departmentId: string;
-  departmentName: string;
   role: string;
   year: string;
   score: number;

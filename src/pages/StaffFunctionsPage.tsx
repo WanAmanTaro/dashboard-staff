@@ -18,6 +18,7 @@ import {
   CONSULTATION_TYPES,
   DEFAULT_IAB_MODULES,
   DEFAULT_PUBLICATION_YEARS,
+  PROGRAM_EVALUATION_CENTERS,
   PROGRAM_MANAGEMENT_ROLES,
   THINK_TANK_LEVELS,
   THINK_TANK_ROLES,
@@ -133,11 +134,10 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
   const [evalModalOpen, setEvalModalOpen] = useState(false);
   const [editingEvalId, setEditingEvalId] = useState<string | null>(null);
   const [evName, setEvName] = useState('');
-  const [evCenterId, setEvCenterId] = useState('');
-  const [evDeptId, setEvDeptId] = useState('');
+  const [evCenterName, setEvCenterName] = useState(PROGRAM_EVALUATION_CENTERS[0]);
   const [evRole, setEvRole] = useState(PROGRAM_MANAGEMENT_ROLES[0]);
   const [evYear, setEvYear] = useState('');
-  const [evScore, setEvScore] = useState('90.0');
+  const [evScore, setEvScore] = useState('98.4');
 
   const [thinkModalOpen, setThinkModalOpen] = useState(false);
   const [editingThinkId, setEditingThinkId] = useState<string | null>(null);
@@ -209,7 +209,7 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
     try {
       const saved = await saveStaffFunctions({
         staffId: selectedStaffId,
-        uid: activeProfile?.uid || (isOwnRecord ? userAccount.uid : ''),
+        uid: isOwnRecord ? userAccount.uid : activeProfile?.uid || '',
         centerId: activeProfile?.centerId || userAccount.centerId || '',
         departmentId: activeProfile?.departmentId || userAccount.departmentId || '',
         trainings: partial.trainings ?? trainings,
@@ -305,20 +305,17 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
   const handleSaveEvaluation = async (e: React.FormEvent) => {
     e.preventDefault();
     const numericScore = Number(evScore);
-    if (!evName.trim() || !evYear.trim() || !Number.isFinite(numericScore)) return;
-    if (numericScore < 0 || numericScore > 100) {
-      showToast('error', 'Skor penilaian mestilah antara 0 hingga 100.');
+    if (!evName.trim() || !evCenterName.trim() || !evRole.trim() || !evYear.trim() || !Number.isFinite(numericScore)) {
       return;
     }
-    const center = organizations.find((c) => c.id === evCenterId);
-    const dept = departments.find((d) => d.id === evDeptId);
+    if (numericScore < 0 || numericScore > 100) {
+      showToast('error', 'Nilai penilaian program mestilah antara 0 hingga 100.');
+      return;
+    }
     const nextItem: ProgramEvaluationRecord = {
       id: editingEvalId || makeRecordId('EVA'),
       programName: evName.trim(),
-      centerId: evCenterId,
-      centerName: center?.name || '',
-      departmentId: evDeptId,
-      departmentName: dept?.name || '',
+      centerName: evCenterName.trim(),
       role: evRole.trim(),
       year: evYear.trim(),
       score: Math.round(numericScore * 10) / 10,
@@ -380,7 +377,6 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
   const meta = SECTION_META[activeSection];
   const HeaderIcon = meta.icon;
   const pgFilteredDepts = departments.filter((d) => !pgCenterId || d.centerId === pgCenterId);
-  const evFilteredDepts = departments.filter((d) => !evCenterId || d.centerId === evCenterId);
   const defaultYear = yearOptions[yearOptions.length - 1] || String(new Date().getFullYear());
 
   return (
@@ -868,29 +864,19 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
                       BAHAGIAN B: PENILAIAN PROGRAM
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Masukkan skor penilaian program (90% dan ke atas dikategorikan sebagai Cemerlang secara automatik).
+                      Masukkan nilai penilaian program; markah 90% dan ke atas dikategorikan sebagai Cemerlang.
                     </p>
                   </div>
                   {canEdit && (
                     <button
                       type="button"
                       onClick={() => {
-                        const defaultCid =
-                          activeProfile?.centerId ||
-                          userAccount.centerId ||
-                          organizations[0]?.id ||
-                          '';
-                        const defaultDid =
-                          activeProfile?.departmentId ||
-                          departments.find((d) => d.centerId === defaultCid)?.id ||
-                          '';
                         setEditingEvalId(null);
                         setEvName('');
-                        setEvCenterId(defaultCid);
-                        setEvDeptId(defaultDid);
+                        setEvCenterName(PROGRAM_EVALUATION_CENTERS[0]);
                         setEvRole(PROGRAM_MANAGEMENT_ROLES[0]);
                         setEvYear(defaultYear);
-                        setEvScore('95.0');
+                        setEvScore('');
                         setEvalModalOpen(true);
                       }}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
@@ -912,10 +898,9 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
                           <th className="py-2.5 px-4 w-14">Bil.</th>
                           <th className="py-2.5 px-4">Nama Program</th>
                           <th className="py-2.5 px-4">Pusat</th>
-                          <th className="py-2.5 px-4">Jabatan</th>
                           <th className="py-2.5 px-4">Peranan</th>
                           <th className="py-2.5 px-4 w-24">Tahun</th>
-                          <th className="py-2.5 px-4 w-44">Penilaian Program</th>
+                          <th className="py-2.5 px-4 w-48">Penilaian Program</th>
                           {canEdit && <th className="py-2.5 px-4 text-right w-32">Tindakan</th>}
                         </tr>
                       </thead>
@@ -931,7 +916,6 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
                                 {item.programName}
                               </td>
                               <td className="py-3 px-4 text-slate-700">{item.centerName || '-'}</td>
-                              <td className="py-3 px-4 text-slate-700">{item.departmentName || '-'}</td>
                               <td className="py-3 px-4 text-slate-700">{item.role}</td>
                               <td className="py-3 px-4 font-mono-tabular text-slate-700">
                                 {item.year}
@@ -954,8 +938,7 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
                                       onClick={() => {
                                         setEditingEvalId(item.id);
                                         setEvName(item.programName);
-                                        setEvCenterId(item.centerId);
-                                        setEvDeptId(item.departmentId);
+                                        setEvCenterName(item.centerName || PROGRAM_EVALUATION_CENTERS[0]);
                                         setEvRole(item.role);
                                         setEvYear(item.year);
                                         setEvScore(String(item.score));
@@ -1643,45 +1626,30 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat *</label>
+                <select
+                  required
+                  value={evCenterName}
+                  onChange={(e) => setEvCenterName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg"
+                >
+                  <option value="">-- Pilih Pusat --</option>
+                  {evCenterName && !PROGRAM_EVALUATION_CENTERS.includes(evCenterName) && (
+                    <option value={evCenterName}>{evCenterName}</option>
+                  )}
+                  {PROGRAM_EVALUATION_CENTERS.map((center) => (
+                    <option key={center} value={center}>
+                      {center}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pusat *</label>
-                  <select
-                    required
-                    value={evCenterId}
-                    onChange={(e) => {
-                      setEvCenterId(e.target.value);
-                      setEvDeptId('');
-                    }}
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg"
-                  >
-                    <option value="">-- Pilih Pusat --</option>
-                    {organizations.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan *</label>
-                  <select
-                    required
-                    value={evDeptId}
-                    onChange={(e) => setEvDeptId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg"
-                  >
-                    <option value="">-- Pilih Jabatan --</option>
-                    {evFilteredDepts.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Peranan *</label>
                   <select
+                    required
                     value={evRole}
                     onChange={(e) => setEvRole(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg"
@@ -1731,10 +1699,10 @@ export const StaffFunctionsPage: React.FC<StaffFunctionsPageProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tahap Penilaian (Auto Kira)
+                    Paparan Penilaian Program
                   </label>
                   <div className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg font-mono-tabular font-semibold text-[#0B1F3B]">
-                    {Number.isFinite(Number(evScore))
+                    {evScore.trim() !== '' && Number.isFinite(Number(evScore))
                       ? `${Number(evScore)}% (${getProgramEvaluationRating(Number(evScore))})`
                       : '-'}
                   </div>

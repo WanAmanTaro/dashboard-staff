@@ -16,11 +16,11 @@ import { ExpertiseDirectoryPage } from './pages/ExpertiseDirectoryPage';
 import { KompetensiIabPage } from './pages/KompetensiIabPage';
 import { LoginPage } from './pages/LoginPage';
 import { PencapaianPage } from './pages/PencapaianPage';
+import { PengalamanMengajarPage } from './pages/PengalamanMengajarPage';
 import { ProfessionalProfilePdfPage } from './pages/ProfessionalProfilePdfPage';
 import { ResearchAndPublicationPage } from './pages/ResearchAndPublicationPage';
 import { StaffFunctionsPage } from './pages/StaffFunctionsPage';
 import { StaffProfilePage } from './pages/StaffProfilePage';
-import { TeachingExperiencePage } from './pages/TeachingExperiencePage';
 import { WelcomePage } from './pages/WelcomePage';
 import {
   getSystemSettings,
@@ -221,10 +221,9 @@ const AppContent: React.FC = () => {
       )}
 
       {resolvedRoute === 'teaching-experience' && (
-        <TeachingExperiencePage
+        <PengalamanMengajarPage
           userAccount={userAccount}
           profiles={countableProfiles}
-          sysSettings={sysSettings}
         />
       )}
 

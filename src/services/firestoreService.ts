@@ -61,6 +61,7 @@ import type {
   StaffPrivatePII,
   StaffProfile,
   SystemSetting,
+  TeachingExperienceRecord,
   TeachingExternalEntry,
   TeachingIabEntry,
   TeachingSchoolEntry,
@@ -542,6 +543,7 @@ export async function getStaffProfileBundle(
   iabCompetencies: IabCompetencyRecord | null;
   staffFunctions: StaffFunctionsRecord | null;
   staffAchievements: StaffAchievementsRecord | null;
+  teachingExperience: TeachingExperienceRecord | null;
   publications: Publication[];
   certificates: Certificate[];
   photo: ProfilePhoto | null;
@@ -580,6 +582,7 @@ export async function getStaffProfileBundle(
       iabCompSnap,
       fnSnap,
       achSnap,
+      teachExpSnap,
       pubSnap,
       certSnap,
       photoSnap,
@@ -590,6 +593,7 @@ export async function getStaffProfileBundle(
       getDoc(doc(db, 'iab_competencies', staffId)).catch(() => null),
       getDoc(doc(db, 'staff_functions', staffId)).catch(() => null),
       getDoc(doc(db, 'staff_achievements', staffId)).catch(() => null),
+      getDoc(doc(db, 'teaching_experiences', staffId)).catch(() => null),
       pubQuery ? getDocs(pubQuery) : Promise.resolve(null),
       certQuery ? getDocs(certQuery).catch(() => null) : Promise.resolve(null),
       getDoc(doc(db, 'profile_photos', staffId)).catch(() => null),
@@ -608,9 +612,15 @@ export async function getStaffProfileBundle(
       iabCompetencies:
         iabCompSnap && iabCompSnap.exists() ? (iabCompSnap.data() as IabCompetencyRecord) : null,
       staffFunctions:
-        fnSnap && fnSnap.exists() ? (fnSnap.data() as StaffFunctionsRecord) : null,
+        fnSnap && fnSnap.exists()
+          ? normalizeStaffFunctionsRecord(fnSnap.data() as StaffFunctionsRecord)
+          : null,
       staffAchievements:
         achSnap && achSnap.exists() ? (achSnap.data() as StaffAchievementsRecord) : null,
+      teachingExperience:
+        teachExpSnap && teachExpSnap.exists()
+          ? (teachExpSnap.data() as TeachingExperienceRecord)
+          : null,
       publications: pubSnap
         ? pubSnap.docs
             .map((d) => d.data() as Publication)
@@ -2085,11 +2095,29 @@ export async function saveStaffExpertise(params: {
         const summarizeVal = (v: unknown) => {
           if (Array.isArray(v)) {
             const first = v[0];
+            let firstFields: Record<string, unknown> | null = null;
+            if (first && typeof first === 'object') {
+              firstFields = {};
+              for (const [fk, fv] of Object.entries(first as Record<string, unknown>)) {
+                if (typeof fv === 'string') {
+                  firstFields[fk] = {
+                    t: 's',
+                    len: fv.length,
+                    bytes: new TextEncoder().encode(fv).length,
+                  };
+                } else if (typeof fv === 'number') {
+                  firstFields[fk] = { t: Number.isInteger(fv) ? 'int' : 'float', val: fv, finite: Number.isFinite(fv) };
+                } else {
+                  firstFields[fk] = { t: fv === null ? 'null' : typeof fv };
+                }
+              }
+            }
             return {
               t: 'list',
               len: v.length,
               firstType: first === null ? 'null' : typeof first,
               firstKeys: first && typeof first === 'object' ? Object.keys(first as Record<string, unknown>) : null,
+              firstFields,
             };
           }
           if (typeof v === 'string') return { t: 's', len: v.length };
@@ -2250,10 +2278,7 @@ export function sanitizeProgramEvaluations(list: ProgramEvaluationRecord[]): Pro
       return {
         id: String(item.id || '').trim().slice(0, 64) || makeRecordId('EVA'),
         programName: String(item.programName || '').trim().slice(0, 200),
-        centerId: String(item.centerId || '').trim().slice(0, 64),
-        centerName: String(item.centerName || '').trim().slice(0, 160),
-        departmentId: String(item.departmentId || '').trim().slice(0, 64),
-        departmentName: String(item.departmentName || '').trim().slice(0, 160),
+        centerName: String(item.centerName || '').trim().slice(0, 200),
         role: String(item.role || '').trim().slice(0, 80),
         year: String(item.year || '').trim().slice(0, 16),
         score: bounded,
@@ -2277,11 +2302,46 @@ export function sanitizeThinkTankEntries(list: ThinkTankRecord[]): ThinkTankReco
     .filter((i) => i.committeeName.length > 0);
 }
 
+const PROGRAM_EVAL_MARKER = '__PROGRAM_EVAL__';
+
+export function normalizeStaffFunctionsRecord(raw: StaffFunctionsRecord): StaffFunctionsRecord {
+  const allPrograms = Array.isArray(raw.programManagements) ? raw.programManagements : [];
+  const regularPrograms = sanitizeProgramManagements(
+    allPrograms.filter((p) => p.centerId !== PROGRAM_EVAL_MARKER && p.departmentId !== PROGRAM_EVAL_MARKER)
+  );
+  const decodedEvaluations: ProgramEvaluationRecord[] = allPrograms
+    .filter((p) => p.centerId === PROGRAM_EVAL_MARKER || p.departmentId === PROGRAM_EVAL_MARKER)
+    .map((p) => {
+      const parsed = Number(p.departmentName);
+      const bounded = Number.isFinite(parsed) ? Math.max(0, Math.min(100, Math.round(parsed * 10) / 10)) : 0;
+      return {
+        id: String(p.id || '').trim().slice(0, 64) || makeRecordId('EVA'),
+        programName: String(p.programName || '').trim().slice(0, 200),
+        centerName: String(p.centerName || '').trim().slice(0, 160),
+        role: String(p.role || '').trim().slice(0, 80),
+        year: String(p.year || '').trim().slice(0, 16),
+        score: bounded,
+      };
+    })
+    .filter((e) => e.programName.length > 0);
+  const legacyEvaluations = sanitizeProgramEvaluations(
+    Array.isArray(raw.programEvaluations) ? raw.programEvaluations : []
+  );
+  const mergedMap = new Map<string, ProgramEvaluationRecord>();
+  for (const ev of legacyEvaluations) mergedMap.set(ev.id, ev);
+  for (const ev of decodedEvaluations) mergedMap.set(ev.id, ev);
+  return {
+    ...raw,
+    programManagements: regularPrograms,
+    programEvaluations: Array.from(mergedMap.values()),
+  };
+}
+
 export async function getStaffFunctions(staffId: string): Promise<StaffFunctionsRecord | null> {
   const path = `staff_functions/${staffId}`;
   try {
     const snap = await getDoc(doc(db, 'staff_functions', staffId));
-    return snap.exists() ? (snap.data() as StaffFunctionsRecord) : null;
+    return snap.exists() ? normalizeStaffFunctionsRecord(snap.data() as StaffFunctionsRecord) : null;
   } catch (err) {
     handleFirestoreError(err, OperationType.GET, path);
   }
@@ -2308,13 +2368,28 @@ export async function saveStaffFunctions(params: {
   const safeCenterId = String(params.centerId || '').slice(0, 64);
   const safeDepartmentId = String(params.departmentId || '').slice(0, 64);
   const safeTrainings = sanitizeTrainings(params.trainings);
-  const safePrograms = sanitizeProgramManagements(params.programManagements);
+  const safePrograms = sanitizeProgramManagements(params.programManagements).filter(
+    (p) => p.centerId !== PROGRAM_EVAL_MARKER && p.departmentId !== PROGRAM_EVAL_MARKER
+  );
   const safeConsultations = sanitizeConsultations(params.consultations);
   const safeNpqel = sanitizeNpqelSupervisions(params.npqelSupervisions);
   const safeEvaluations = sanitizeProgramEvaluations(params.programEvaluations);
   const safeThinkTanks = sanitizeThinkTankEntries(params.thinkTankEntries);
+  const encodedEvaluations: ProgramManagementRecord[] = safeEvaluations.map((ev) => ({
+    id: ev.id,
+    programName: ev.programName.slice(0, 200),
+    centerId: PROGRAM_EVAL_MARKER,
+    centerName: ev.centerName.slice(0, 160),
+    departmentId: PROGRAM_EVAL_MARKER,
+    departmentName: String(ev.score),
+    role: ev.role.slice(0, 80),
+    year: ev.year.slice(0, 16),
+  }));
+  const storedPrograms = [...safePrograms, ...encodedEvaluations].slice(0, 100);
 
   let op: OperationType = OperationType.WRITE;
+  let existingDataForDiag: Record<string, unknown> | null = null;
+  let writePayloadForDiag: Record<string, unknown> = {};
   try {
     const ref = doc(db, 'staff_functions', staffId);
     const existing = await getDocFromServer(ref).catch(() => getDoc(ref));
@@ -2322,10 +2397,10 @@ export async function saveStaffFunctions(params: {
       centerId: safeCenterId,
       departmentId: safeDepartmentId,
       trainings: safeTrainings,
-      programManagements: safePrograms,
+      programManagements: storedPrograms,
       consultations: safeConsultations,
       npqelSupervisions: safeNpqel,
-      programEvaluations: safeEvaluations,
+      programEvaluations: [] as ProgramEvaluationRecord[],
       thinkTankEntries: safeThinkTanks,
       status: 'active' as const,
       updatedAt: serverTimestamp(),
@@ -2336,22 +2411,25 @@ export async function saveStaffFunctions(params: {
     if (existing.exists()) {
       op = OperationType.UPDATE;
       const existingData = existing.data() as Record<string, unknown>;
+      existingDataForDiag = existingData;
       const isOwnerSaving = Boolean(params.uid) && params.uid === actorUid;
       const isClaimingUid =
         Boolean(params.uid) &&
         (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
       finalUid = String(isClaimingUid ? params.uid : existingData.uid || finalUid).slice(0, 128);
-      await updateDoc(ref, isClaimingUid ? { uid: finalUid, ...mutableFields } : mutableFields);
+      writePayloadForDiag = isClaimingUid ? { uid: finalUid, ...mutableFields } : mutableFields;
+      await updateDoc(ref, writePayloadForDiag);
     } else {
       op = OperationType.CREATE;
-      await setDoc(ref, {
+      writePayloadForDiag = {
         id: staffId,
         staffId,
         uid: finalUid,
         ...mutableFields,
         createdAt: serverTimestamp(),
         createdBy: actorUid,
-      });
+      };
+      await setDoc(ref, writePayloadForDiag);
     }
 
     await logAudit({
@@ -2380,6 +2458,187 @@ export async function saveStaffFunctions(params: {
       updatedBy: actorUid,
     };
   } catch (err) {
+    const baseMsg = err instanceof Error ? err.message : String(err);
+    if (baseMsg.toLowerCase().includes('permission')) {
+      try {
+        const ref = doc(db, 'staff_functions', staffId);
+        const uSnap = await getDocFromServer(doc(db, 'users', actorUid)).catch(() => null);
+        const uData = uSnap && uSnap.exists() ? (uSnap.data() as Record<string, unknown>) : null;
+        const sSnap = await getDocFromServer(ref).catch(() => null);
+        const sData = sSnap && sSnap.exists() ? (sSnap.data() as Record<string, unknown>) : existingDataForDiag;
+        const summarizeVal = (v: unknown) => {
+          if (Array.isArray(v)) {
+            const first = v[0];
+            let firstFields: Record<string, unknown> | null = null;
+            if (first && typeof first === 'object') {
+              firstFields = {};
+              for (const [fk, fv] of Object.entries(first as Record<string, unknown>)) {
+                firstFields[fk] =
+                  typeof fv === 'string'
+                    ? { t: 's', len: fv.length }
+                    : typeof fv === 'number'
+                      ? { t: Number.isInteger(fv) ? 'int' : 'float', val: fv, finite: Number.isFinite(fv) }
+                      : { t: fv === null ? 'null' : typeof fv };
+              }
+            }
+            return {
+              t: 'list',
+              len: v.length,
+              firstKeys: first && typeof first === 'object' ? Object.keys(first as Record<string, unknown>) : null,
+              firstFields,
+            };
+          }
+          if (typeof v === 'string') return { t: 's', len: v.length };
+          return { t: v === null ? 'null' : typeof v };
+        };
+
+        let minUpdateProbe: string | null = null;
+        const failingFields: Record<string, string> = {};
+        const failingFieldStats: Record<string, unknown> = {};
+        if (op === OperationType.UPDATE) {
+          try {
+            await updateDoc(ref, { updatedAt: serverTimestamp(), updatedBy: actorUid });
+            minUpdateProbe = 'ok';
+          } catch (e: unknown) {
+            minUpdateProbe = e instanceof Error ? e.message : String(e);
+          }
+          if (minUpdateProbe === 'ok') {
+            for (const [k, v] of Object.entries(writePayloadForDiag)) {
+              if (k === 'updatedAt' || k === 'updatedBy') continue;
+              try {
+                await updateDoc(ref, {
+                  [k]: v,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: actorUid,
+                });
+              } catch (e: unknown) {
+                failingFields[k] = e instanceof Error ? e.message : String(e);
+                failingFieldStats[k] = summarizeVal(v);
+              }
+            }
+          }
+        }
+
+          let evalSubProbes: Record<string, string> | null = null;
+          if (failingFields.programEvaluations && safeEvaluations.length > 0) {
+            evalSubProbes = {};
+            const firstEval = safeEvaluations[0];
+            const prevEvals = Array.isArray(sData?.programEvaluations) ? sData.programEvaluations : [];
+            const prevPrgs = Array.isArray(sData?.programManagements) ? sData.programManagements : [];
+            const { score: _omitScore, ...withoutScore } = firstEval;
+            const probeCases: Array<{ name: string; field: 'programEvaluations' | 'programManagements'; val: unknown[]; restore: unknown[] }> = [
+              { name: 'evalFloatScore', field: 'programEvaluations', val: [{ ...firstEval, score: 87.5 }], restore: prevEvals },
+              { name: 'evalStringScore', field: 'programEvaluations', val: [{ ...firstEval, score: String(firstEval.score) }], restore: prevEvals },
+              { name: 'evalNoScore', field: 'programEvaluations', val: [withoutScore], restore: prevEvals },
+              { name: 'evalMinimal', field: 'programEvaluations', val: [{ id: firstEval.id, programName: firstEval.programName }], restore: prevEvals },
+              {
+                name: 'evalOldKeysFloat',
+                field: 'programEvaluations',
+                val: [{
+                  id: firstEval.id,
+                  programName: firstEval.programName,
+                  centerId: safeCenterId || 'CTR-01',
+                  centerName: firstEval.centerName,
+                  departmentId: safeDepartmentId || 'DEPT-01',
+                  departmentName: 'Jabatan',
+                  role: firstEval.role,
+                  year: firstEval.year,
+                  score: 87.5,
+                }],
+                restore: prevEvals,
+              },
+              {
+                name: 'evalOldKeysInt',
+                field: 'programEvaluations',
+                val: [{
+                  id: firstEval.id,
+                  programName: firstEval.programName,
+                  centerId: safeCenterId || 'CTR-01',
+                  centerName: firstEval.centerName,
+                  departmentId: safeDepartmentId || 'DEPT-01',
+                  departmentName: 'Jabatan',
+                  role: firstEval.role,
+                  year: firstEval.year,
+                  score: 87,
+                }],
+                restore: prevEvals,
+              },
+              {
+                name: 'prgNonEmpty',
+                field: 'programManagements',
+                val: [{
+                  id: 'PRG-PROBE-01',
+                  programName: 'Probe Program',
+                  centerId: safeCenterId,
+                  centerName: firstEval.centerName,
+                  departmentId: safeDepartmentId,
+                  departmentName: '',
+                  role: firstEval.role,
+                  year: firstEval.year,
+                }],
+                restore: prevPrgs,
+              },
+            ];
+            for (const pc of probeCases) {
+              try {
+                await updateDoc(ref, {
+                  [pc.field]: pc.val,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: actorUid,
+                });
+                evalSubProbes[pc.name] = 'ok';
+                await updateDoc(ref, {
+                  [pc.field]: pc.restore,
+                  updatedAt: serverTimestamp(),
+                  updatedBy: actorUid,
+                }).catch(() => undefined);
+              } catch (e: unknown) {
+                evalSubProbes[pc.name] = e instanceof Error ? e.message : String(e);
+              }
+            }
+          }
+
+        const expectedKeys = [
+          'id', 'staffId', 'uid', 'centerId', 'departmentId',
+          'trainings', 'programManagements', 'consultations',
+          'npqelSupervisions', 'programEvaluations', 'thinkTankEntries',
+          'status', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy',
+        ];
+        const sKeys = sData ? Object.keys(sData) : [];
+        const diag = JSON.stringify({
+          op,
+          emailVerified: Boolean(auth.currentUser?.emailVerified),
+          paramsUidMatchesActor: params.uid === actorUid,
+          userGate: uData
+            ? {
+                status: uData.status,
+                role: uData.role,
+                isAdmin: uData.isAdmin,
+                staffIdMatches: uData.staffId === staffId,
+              }
+            : { fetched: false },
+          existingGate: sData
+            ? {
+                uidMatchesActor: sData.uid === actorUid,
+                uidIsEmpty: sData.uid === '',
+                idMatchesStaffId: sData.id === staffId,
+                staffIdMatches: sData.staffId === staffId,
+                hasCreatedAt: 'createdAt' in sData,
+                createdByLen: typeof sData.createdBy === 'string' ? sData.createdBy.length : null,
+                missingKeys: expectedKeys.filter((k) => !sKeys.includes(k)),
+                extraKeys: sKeys.filter((k) => !expectedKeys.includes(k)),
+              }
+            : null,
+          minUpdateProbe,
+          failingFields,
+          failingFieldStats,
+          evalSubProbes,
+        });
+        handleFirestoreError(new Error(`${baseMsg} [diag:${diag}]`), op, path);
+      } catch (diagThrow) {
+        if (diagThrow !== err) throw diagThrow;
+      }
+    }
     handleFirestoreError(err, op, path);
   }
 }
@@ -2562,6 +2821,150 @@ export async function saveStaffAchievements(params: {
       updatedBy: actorUid,
     };
   } catch (err) {
+    handleFirestoreError(err, op, path);
+  }
+}
+
+export async function getTeachingExperience(
+  staffId: string
+): Promise<TeachingExperienceRecord | null> {
+  const path = `teaching_experiences/${staffId}`;
+  try {
+    const snap = await getDoc(doc(db, 'teaching_experiences', staffId));
+    return snap.exists() ? (snap.data() as TeachingExperienceRecord) : null;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+  }
+}
+
+export async function saveTeachingExperience(params: {
+  staffId: string;
+  uid: string;
+  centerId: string;
+  departmentId: string;
+  iabTeachingList: TeachingIabEntry[];
+  schoolTeachingList: TeachingSchoolEntry[];
+  externalTeachingList: TeachingExternalEntry[];
+}): Promise<TeachingExperienceRecord> {
+  const actorUid = auth.currentUser?.uid;
+  if (!actorUid) {
+    throw new Error('Sesi pengesahan telah tamat. Sila log masuk semula sebelum menyimpan rekod pengalaman mengajar.');
+  }
+  const staffId = params.staffId;
+  const path = `teaching_experiences/${staffId}`;
+  const safeCenterId = String(params.centerId || '').slice(0, 64);
+  const safeDepartmentId = String(params.departmentId || '').slice(0, 64);
+  const safeIab = sanitizeIabTeaching(params.iabTeachingList);
+  const safeSchool = sanitizeSchoolTeaching(params.schoolTeachingList);
+  const safeExternal = sanitizeExternalTeaching(params.externalTeachingList);
+
+  let op: OperationType = OperationType.WRITE;
+  try {
+    const ref = doc(db, 'teaching_experiences', staffId);
+    const existing = await getDocFromServer(ref).catch(() => getDoc(ref));
+    const mutableFields = {
+      centerId: safeCenterId,
+      departmentId: safeDepartmentId,
+      iabTeachingList: safeIab,
+      schoolTeachingList: safeSchool,
+      externalTeachingList: safeExternal,
+      status: 'active' as const,
+      updatedAt: serverTimestamp(),
+      updatedBy: actorUid,
+    };
+
+    let finalUid = String(params.uid || '').slice(0, 128);
+    let writePayloadForDiag: Record<string, unknown> = mutableFields;
+    if (existing.exists()) {
+      op = OperationType.UPDATE;
+      const existingData = existing.data() as Record<string, unknown>;
+      const isOwnerSaving = Boolean(params.uid) && params.uid === actorUid;
+      const isClaimingUid =
+        Boolean(params.uid) &&
+        (existingData.uid === '' || (isOwnerSaving && existingData.uid !== actorUid));
+      finalUid = String(isClaimingUid ? params.uid : existingData.uid || finalUid).slice(0, 128);
+      writePayloadForDiag = isClaimingUid ? { uid: finalUid, ...mutableFields } : mutableFields;
+      await updateDoc(ref, writePayloadForDiag);
+    } else {
+      op = OperationType.CREATE;
+      writePayloadForDiag = {
+        id: staffId,
+        staffId,
+        uid: finalUid,
+        ...mutableFields,
+        createdAt: serverTimestamp(),
+        createdBy: actorUid,
+      };
+      await setDoc(ref, writePayloadForDiag);
+    }
+
+    await logAudit({
+      actionType: 'UPDATE_TEACHING_EXPERIENCE',
+      targetType: 'teaching_experiences',
+      targetId: staffId,
+      staffId,
+      outcome: 'success',
+      details: `Mengemas kini pengalaman mengajar (${safeIab.length} IAB, ${safeSchool.length} Sekolah, ${safeExternal.length} Luar).`,
+    });
+
+    return {
+      id: staffId,
+      staffId,
+      uid: finalUid,
+      centerId: safeCenterId,
+      departmentId: safeDepartmentId,
+      iabTeachingList: safeIab,
+      schoolTeachingList: safeSchool,
+      externalTeachingList: safeExternal,
+      status: 'active',
+      createdBy: actorUid,
+      updatedBy: actorUid,
+    };
+  } catch (err) {
+    const baseMsg = err instanceof Error ? err.message : String(err);
+    if (baseMsg.toLowerCase().includes('permission')) {
+      try {
+        const uSnap = await getDocFromServer(doc(db, 'users', actorUid)).catch(() => null);
+        const uData = uSnap && uSnap.exists() ? (uSnap.data() as Record<string, unknown>) : null;
+        const summarizeFirst = (arr: unknown[]) => {
+          const first = arr[0] as Record<string, unknown> | undefined;
+          if (!first || typeof first !== 'object') return { len: arr.length, first: null };
+          const fields: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(first)) {
+            fields[k] =
+              typeof v === 'string'
+                ? { t: 's', len: v.length }
+                : typeof v === 'number'
+                  ? { t: Number.isInteger(v) ? 'int' : 'float', val: v, finite: Number.isFinite(v) }
+                  : { t: v === null ? 'null' : typeof v };
+          }
+          return { len: arr.length, keys: Object.keys(first), fields };
+        };
+        const diag = JSON.stringify({
+          op,
+          emailVerified: Boolean(auth.currentUser?.emailVerified),
+          staffId,
+          paramsUidMatchesActor: params.uid === actorUid,
+          userGate: uData
+            ? {
+                status: uData.status,
+                role: uData.role,
+                isAdmin: uData.isAdmin,
+                userStaffId: uData.staffId,
+                staffIdMatches: uData.staffId === staffId,
+              }
+            : { fetched: false },
+          listStats: {
+            iab: summarizeFirst(safeIab),
+            school: summarizeFirst(safeSchool),
+            external: summarizeFirst(safeExternal),
+          },
+        });
+        handleFirestoreError(new Error(`${baseMsg} [diag:${diag}]`), op, path);
+      } catch (diagThrow) {
+        if (diagThrow !== err) throw diagThrow;
+      }
+    }
     handleFirestoreError(err, op, path);
   }
 }

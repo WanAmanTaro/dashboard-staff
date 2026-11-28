@@ -27,6 +27,7 @@ import type {
   StaffFunctionsRecord,
   StaffPrivatePII,
   StaffProfile,
+  TeachingExperienceRecord,
 } from '../types/iab';
 
 interface ProfessionalProfilePdfPageProps {
@@ -71,6 +72,7 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
     iabCompetencies?: IabCompetencyRecord | null;
     staffFunctions?: StaffFunctionsRecord | null;
     staffAchievements?: StaffAchievementsRecord | null;
+    teachingExperience?: TeachingExperienceRecord | null;
     publications: Publication[];
     certificates: Certificate[];
   } | null>(null);
@@ -123,6 +125,7 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
           iabCompetencies: bundle.iabCompetencies,
           staffFunctions: bundle.staffFunctions,
           staffAchievements: bundle.staffAchievements,
+          teachingExperience: bundle.teachingExperience,
           publications: bundle.publications,
           certificates: bundle.certificates,
           photoDataUrl,
@@ -205,9 +208,14 @@ export const ProfessionalProfilePdfPage: React.FC<ProfessionalProfilePdfPageProp
   const iabCertsAda = iabCerts.filter((c) => c.status === 'Ada');
   const iabModules = bundle?.iabCompetencies?.modules || [];
 
-  const iabTeaching = bundle?.expertise?.iabTeachingList || [];
-  const schoolTeaching = bundle?.expertise?.schoolTeachingList || [];
-  const extTeaching = bundle?.expertise?.externalTeachingList || [];
+  const iabTeaching =
+    bundle?.teachingExperience?.iabTeachingList || bundle?.expertise?.iabTeachingList || [];
+  const schoolTeaching =
+    bundle?.teachingExperience?.schoolTeachingList || bundle?.expertise?.schoolTeachingList || [];
+  const extTeaching =
+    bundle?.teachingExperience?.externalTeachingList ||
+    bundle?.expertise?.externalTeachingList ||
+    [];
 
   const fn = bundle?.staffFunctions;
   const trainings = fn?.trainings || [];

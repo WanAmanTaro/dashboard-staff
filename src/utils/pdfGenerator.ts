@@ -18,6 +18,7 @@ import type {
   StaffFunctionsRecord,
   StaffPrivatePII,
   StaffProfile,
+  TeachingExperienceRecord,
 } from '../types/iab';
 
 export interface ProfilePdfBundle {
@@ -29,6 +30,7 @@ export interface ProfilePdfBundle {
   iabCompetencies?: IabCompetencyRecord | null;
   staffFunctions?: StaffFunctionsRecord | null;
   staffAchievements?: StaffAchievementsRecord | null;
+  teachingExperience?: TeachingExperienceRecord | null;
   publications: Publication[];
   certificates: Certificate[];
   photoDataUrl?: string | null;
@@ -47,6 +49,7 @@ export function generateProfessionalProfilePdf(
     iabCompetencies,
     staffFunctions,
     staffAchievements,
+    teachingExperience,
     publications,
     certificates,
     photoDataUrl,
@@ -149,9 +152,11 @@ export function generateProfessionalProfilePdf(
 
   const iabCertsAda = (iabCompetencies?.certifications || []).filter((c) => c.status === 'Ada');
   const iabModulesList = iabCompetencies?.modules || [];
-  const iabTeaching = expertise?.iabTeachingList || [];
-  const schoolTeaching = expertise?.schoolTeachingList || [];
-  const extTeaching = expertise?.externalTeachingList || [];
+  const iabTeaching = teachingExperience?.iabTeachingList || expertise?.iabTeachingList || [];
+  const schoolTeaching =
+    teachingExperience?.schoolTeachingList || expertise?.schoolTeachingList || [];
+  const extTeaching =
+    teachingExperience?.externalTeachingList || expertise?.externalTeachingList || [];
 
   const apcAwards = staffAchievements?.apcAwards || [];
   const innovations = staffAchievements?.innovations || [];

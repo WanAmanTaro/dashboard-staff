@@ -14,39 +14,26 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
+import { EXTERNAL_TEACHING_TYPES, IAB_TEACHING_TYPES } from '../lib/constants';
 import {
-  EXTERNAL_TEACHING_TYPES,
-  IAB_TEACHING_TYPES,
-  computeProfileCompletion,
-} from '../lib/constants';
-import {
-  getStaffProfileBundle,
+  getTeachingExperience,
   makeRecordId,
-  saveStaffExpertise,
+  saveTeachingExperience,
 } from '../services/firestoreService';
 import type {
-  Certificate,
-  CompetencyItem,
-  ExpertiseRecord,
-  ProfilePhoto,
-  Publication,
-  Qualification,
-  StaffPrivatePII,
   StaffProfile,
-  SystemSetting,
   TeachingExternalEntry,
   TeachingIabEntry,
   TeachingSchoolEntry,
   UserAccount,
 } from '../types/iab';
 
-interface TeachingExperiencePageProps {
+interface PengalamanMengajarPageProps {
   userAccount: UserAccount;
   profiles: StaffProfile[];
-  sysSettings: SystemSetting | null;
 }
 
-export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
+export const PengalamanMengajarPage: React.FC<PengalamanMengajarPageProps> = ({
   userAccount,
   profiles,
 }) => {
@@ -57,15 +44,6 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [bundleProfile, setBundleProfile] = useState<StaffProfile | null>(null);
-  const [bundlePii, setBundlePii] = useState<StaffPrivatePII | null>(null);
-  const [bundleQuals, setBundleQuals] = useState<Qualification[]>([]);
-  const [bundleExpertise, setBundleExpertise] = useState<ExpertiseRecord | null>(null);
-  const [bundleComps, setBundleComps] = useState<CompetencyItem[]>([]);
-  const [bundlePubs, setBundlePubs] = useState<Publication[]>([]);
-  const [bundleCerts, setBundleCerts] = useState<Certificate[]>([]);
-  const [bundlePhoto, setBundlePhoto] = useState<ProfilePhoto | null>(null);
-
   const [iabList, setIabList] = useState<TeachingIabEntry[]>([]);
   const [schoolList, setSchoolList] = useState<TeachingSchoolEntry[]>([]);
   const [externalList, setExternalList] = useState<TeachingExternalEntry[]>([]);
@@ -75,13 +53,13 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
   const [editingIabId, setEditingIabId] = useState<string | null>(null);
   const [iabModule, setIabModule] = useState('');
   const [iabType, setIabType] = useState<string>(IAB_TEACHING_TYPES[0]);
-  const [iabYears, setIabYears] = useState<number>(1);
+  const [iabYears, setIabYears] = useState<string>('1');
 
   // Modal B: Di Sekolah
   const [schoolModalOpen, setSchoolModalOpen] = useState(false);
   const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
   const [schoolSubject, setSchoolSubject] = useState('');
-  const [schoolYears, setSchoolYears] = useState<number>(1);
+  const [schoolYears, setSchoolYears] = useState<string>('1');
 
   // Modal C: Selain Di IAB & Sekolah
   const [extModalOpen, setExtModalOpen] = useState(false);
@@ -89,7 +67,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
   const [extInstitution, setExtInstitution] = useState('');
   const [extModule, setExtModule] = useState('');
   const [extType, setExtType] = useState<string>(EXTERNAL_TEACHING_TYPES[0]);
-  const [extYears, setExtYears] = useState<number>(1);
+  const [extYears, setExtYears] = useState<string>('1');
 
   // Confirm delete
   const [confirmState, setConfirmState] = useState<{
@@ -110,28 +88,18 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
     }
   }, [userAccount.staffId, selectedStaffId]);
 
-  const activeProfile =
-    profiles.find((p) => p.staffId === selectedStaffId) || bundleProfile;
+  const activeProfile = profiles.find((p) => p.staffId === selectedStaffId);
   const isOwnRecord = selectedStaffId === userAccount.staffId;
   const canEdit = userAccount.isAdmin || isOwnRecord;
 
-  const loadData = async (staffIdToLoad: string) => {
+  const loadTeachingRecords = async (staffIdToLoad: string) => {
     if (!staffIdToLoad) return;
     setLoading(true);
     try {
-      const bundle = await getStaffProfileBundle(staffIdToLoad, userAccount);
-      setBundleProfile(bundle.profile);
-      setBundlePii(bundle.pii);
-      setBundleQuals(bundle.qualifications);
-      setBundleExpertise(bundle.expertise);
-      setBundleComps(bundle.competencies?.items || []);
-      setBundlePubs(bundle.publications);
-      setBundleCerts(bundle.certificates);
-      setBundlePhoto(bundle.photo);
-
-      setIabList(bundle.expertise?.iabTeachingList || []);
-      setSchoolList(bundle.expertise?.schoolTeachingList || []);
-      setExternalList(bundle.expertise?.externalTeachingList || []);
+      const rec = await getTeachingExperience(staffIdToLoad);
+      setIabList(rec?.iabTeachingList || []);
+      setSchoolList(rec?.schoolTeachingList || []);
+      setExternalList(rec?.externalTeachingList || []);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Gagal memuatkan rekod pengalaman mengajar.';
@@ -143,102 +111,44 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
 
   useEffect(() => {
     if (selectedStaffId) {
-      loadData(selectedStaffId);
+      loadTeachingRecords(selectedStaffId);
     }
   }, [selectedStaffId]);
 
-  const persistTeachingLists = async (next: {
+  const parseYears = (raw: string): number => {
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return 0;
+    return Math.max(0, Math.min(60, Math.round(num * 10) / 10));
+  };
+
+  const persistLists = async (next: {
     iabTeachingList: TeachingIabEntry[];
     schoolTeachingList: TeachingSchoolEntry[];
     externalTeachingList: TeachingExternalEntry[];
   }) => {
     if (!selectedStaffId) return;
-    const targetUid = activeProfile?.uid || (isOwnRecord ? userAccount.uid : '');
-    const centerId = activeProfile?.centerId || userAccount.centerId || '';
-    const departmentId = activeProfile?.departmentId || userAccount.departmentId || '';
-
-    const prevExp = bundleExpertise;
-    const preservedPrimary = prevExp?.primaryExpertise || activeProfile?.primaryExpertise || '';
-    const preservedSecondary =
-      prevExp?.secondaryExpertise || activeProfile?.secondaryExpertise || '';
-
-    const nextCompletion = computeProfileCompletion({
-      profile: {
-        fullName: activeProfile?.fullName || (isOwnRecord ? userAccount.displayName : ''),
-        officialEmail: activeProfile?.officialEmail || (isOwnRecord ? userAccount.email : ''),
-        position: activeProfile?.position || '',
-        grade: activeProfile?.grade || '',
-        scheme: activeProfile?.scheme || '',
-        centerId,
-        departmentId,
-        highestQualification: activeProfile?.highestQualification || '',
-        primaryExpertise: preservedPrimary,
-        digitalCompetencies: bundleComps.map((i) => i.categoryName),
-        hasPhoto: Boolean(bundlePhoto || activeProfile?.hasPhoto),
-      },
-      pii: bundlePii,
-      qualificationsCount: bundleQuals.length,
-      expertise: {
-        primaryExpertise: preservedPrimary,
-        teachingExp: prevExp?.teachingExp || '',
-        managementExp: prevExp?.managementExp || '',
-        facilitatorExp: prevExp?.facilitatorExp || '',
-        speakerExp: prevExp?.speakerExp || '',
-        coachExp: prevExp?.coachExp || '',
-        projectExp: prevExp?.projectExp || '',
-        professionalExp: prevExp?.professionalExp || '',
-        iabTeachingList: next.iabTeachingList,
-        schoolTeachingList: next.schoolTeachingList,
-        externalTeachingList: next.externalTeachingList,
-      },
-      competencies: { items: bundleComps },
-      publicationsCount: bundlePubs.length,
-      certificatesCount: bundleCerts.length,
+    const saved = await saveTeachingExperience({
+      staffId: selectedStaffId,
+      uid: isOwnRecord ? userAccount.uid : activeProfile?.uid || '',
+      centerId: activeProfile?.centerId || userAccount.centerId || '',
+      departmentId: activeProfile?.departmentId || userAccount.departmentId || '',
+      iabTeachingList: next.iabTeachingList,
+      schoolTeachingList: next.schoolTeachingList,
+      externalTeachingList: next.externalTeachingList,
     });
-
-    const saved = await saveStaffExpertise({
-      expertise: {
-        id: selectedStaffId,
-        staffId: selectedStaffId,
-        uid: targetUid,
-        centerId,
-        departmentId,
-        primaryExpertise: preservedPrimary,
-        secondaryExpertise: preservedSecondary,
-        specializations: prevExp?.specializations || [],
-        researchAreas: prevExp?.researchAreas || [],
-        teachingAreas: prevExp?.teachingAreas || [],
-        trainingAreas: prevExp?.trainingAreas || [],
-        keywords: prevExp?.keywords || activeProfile?.expertiseKeywords || [],
-        teachingExp: prevExp?.teachingExp || '',
-        managementExp: prevExp?.managementExp || '',
-        facilitatorExp: prevExp?.facilitatorExp || '',
-        speakerExp: prevExp?.speakerExp || '',
-        coachExp: prevExp?.coachExp || '',
-        projectExp: prevExp?.projectExp || '',
-        professionalExp: prevExp?.professionalExp || '',
-        iabTeachingList: next.iabTeachingList,
-        schoolTeachingList: next.schoolTeachingList,
-        externalTeachingList: next.externalTeachingList,
-        status: 'active',
-      },
-      completion: nextCompletion,
-    });
-
-    setBundleExpertise(saved);
-    setIabList(saved.iabTeachingList || next.iabTeachingList);
-    setSchoolList(saved.schoolTeachingList || next.schoolTeachingList);
-    setExternalList(saved.externalTeachingList || next.externalTeachingList);
+    setIabList(saved.iabTeachingList);
+    setSchoolList(saved.schoolTeachingList);
+    setExternalList(saved.externalTeachingList);
   };
 
   // =========================================================
-  // BAHAGIAN A: DI IAB
+  // BAHAGIAN A: PENGALAMAN MENGAJAR DI IAB
   // =========================================================
   const openAddIab = () => {
     setEditingIabId(null);
     setIabModule('');
     setIabType(IAB_TEACHING_TYPES[0]);
-    setIabYears(1);
+    setIabYears('1');
     setIabModalOpen(true);
   };
 
@@ -246,7 +156,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
     setEditingIabId(entry.id);
     setIabModule(entry.moduleOrField);
     setIabType(entry.teachingType || IAB_TEACHING_TYPES[0]);
-    setIabYears(entry.years);
+    setIabYears(String(entry.years ?? 0));
     setIabModalOpen(true);
   };
 
@@ -259,13 +169,13 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
         id: editingIabId || makeRecordId('TIAB'),
         moduleOrField: iabModule.trim(),
         teachingType: iabType,
-        years: Math.max(0, Math.min(60, Number(iabYears) || 0)),
+        years: parseYears(iabYears),
       };
       const nextIab = editingIabId
         ? iabList.map((i) => (i.id === editingIabId ? nextEntry : i))
         : [...iabList, nextEntry];
 
-      await persistTeachingLists({
+      await persistLists({
         iabTeachingList: nextIab,
         schoolTeachingList: schoolList,
         externalTeachingList: externalList,
@@ -281,19 +191,19 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
   };
 
   // =========================================================
-  // BAHAGIAN B: DI SEKOLAH
+  // BAHAGIAN B: PENGALAMAN MENGAJAR DI SEKOLAH
   // =========================================================
   const openAddSchool = () => {
     setEditingSchoolId(null);
     setSchoolSubject('');
-    setSchoolYears(1);
+    setSchoolYears('1');
     setSchoolModalOpen(true);
   };
 
   const openEditSchool = (entry: TeachingSchoolEntry) => {
     setEditingSchoolId(entry.id);
     setSchoolSubject(entry.subject);
-    setSchoolYears(entry.years);
+    setSchoolYears(String(entry.years ?? 0));
     setSchoolModalOpen(true);
   };
 
@@ -305,13 +215,13 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
       const nextEntry: TeachingSchoolEntry = {
         id: editingSchoolId || makeRecordId('TSCH'),
         subject: schoolSubject.trim(),
-        years: Math.max(0, Math.min(60, Number(schoolYears) || 0)),
+        years: parseYears(schoolYears),
       };
       const nextSchool = editingSchoolId
         ? schoolList.map((i) => (i.id === editingSchoolId ? nextEntry : i))
         : [...schoolList, nextEntry];
 
-      await persistTeachingLists({
+      await persistLists({
         iabTeachingList: iabList,
         schoolTeachingList: nextSchool,
         externalTeachingList: externalList,
@@ -327,14 +237,14 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
   };
 
   // =========================================================
-  // BAHAGIAN C: SELAIN DI IAB & SEKOLAH
+  // BAHAGIAN C: PENGALAMAN MENGAJAR SELAIN DI IAB & SEKOLAH
   // =========================================================
   const openAddExternal = () => {
     setEditingExtId(null);
     setExtInstitution('');
     setExtModule('');
     setExtType(EXTERNAL_TEACHING_TYPES[0]);
-    setExtYears(1);
+    setExtYears('1');
     setExtModalOpen(true);
   };
 
@@ -343,7 +253,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
     setExtInstitution(entry.institution);
     setExtModule(entry.moduleOrField);
     setExtType(entry.teachingType || EXTERNAL_TEACHING_TYPES[0]);
-    setExtYears(entry.years);
+    setExtYears(String(entry.years ?? 0));
     setExtModalOpen(true);
   };
 
@@ -357,19 +267,19 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
         institution: extInstitution.trim(),
         moduleOrField: extModule.trim(),
         teachingType: extType,
-        years: Math.max(0, Math.min(60, Number(extYears) || 0)),
+        years: parseYears(extYears),
       };
       const nextExternal = editingExtId
         ? externalList.map((i) => (i.id === editingExtId ? nextEntry : i))
         : [...externalList, nextEntry];
 
-      await persistTeachingLists({
+      await persistLists({
         iabTeachingList: iabList,
         schoolTeachingList: schoolList,
         externalTeachingList: nextExternal,
       });
       setExtModalOpen(false);
-      showToast('success', 'Pengalaman mengajar luar berjaya disimpan.');
+      showToast('success', 'Pengalaman mengajar selain di IAB & sekolah berjaya disimpan.');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal menyimpan rekod.';
       showToast('error', message);
@@ -390,7 +300,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
       onConfirm: async () => {
         setSaving(true);
         try {
-          await persistTeachingLists({
+          await persistLists({
             iabTeachingList:
               section === 'iab' ? iabList.filter((i) => i.id !== id) : iabList,
             schoolTeachingList:
@@ -457,7 +367,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
         </div>
       ) : (
         <div className="space-y-6">
-          {/* BAHAGIAN A: DI IAB */}
+          {/* BAHAGIAN A: PENGALAMAN MENGAJAR DI IAB */}
           <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-start gap-2.5">
@@ -467,7 +377,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                     BAHAGIAN A: PENGALAMAN MENGAJAR DI IAB
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Senarai bidang, modul dan jenis pengajaran yang dikendalikan di IAB.
+                    Senarai bidang atau modul, jenis pengajaran dan tempoh pengalaman di IAB.
                   </p>
                 </div>
               </div>
@@ -475,7 +385,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                 <button
                   type="button"
                   onClick={openAddIab}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg whitespace-nowrap shrink-0 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Tambah
@@ -488,7 +398,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider">
                     <th className="py-3 px-4 w-12">Bil.</th>
-                    <th className="py-3 px-4">Bidang / Modul</th>
+                    <th className="py-3 px-4">Bidang/Modul</th>
                     <th className="py-3 px-4">Jenis Pengajaran</th>
                     <th className="py-3 px-4 w-40">Tahun Pengalaman</th>
                     {canEdit && <th className="py-3 px-4 text-right w-24">Tindakan</th>}
@@ -507,12 +417,14 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   ) : (
                     iabList.map((item, idx) => (
                       <tr key={item.id} className="hover:bg-slate-50/60">
-                        <td className="py-3 px-4 font-mono-tabular text-slate-500">{idx + 1}.</td>
+                        <td className="py-3 px-4 font-mono-tabular tabular-nums text-slate-500">
+                          {idx + 1}.
+                        </td>
                         <td className="py-3 px-4 font-semibold text-[#0B1F3B]">
                           {item.moduleOrField}
                         </td>
                         <td className="py-3 px-4 text-slate-700">{item.teachingType}</td>
-                        <td className="py-3 px-4 font-mono-tabular text-slate-700">
+                        <td className="py-3 px-4 font-mono-tabular tabular-nums text-slate-700">
                           {item.years} tahun
                         </td>
                         {canEdit && (
@@ -545,7 +457,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
             </div>
           </section>
 
-          {/* BAHAGIAN B: DI SEKOLAH */}
+          {/* BAHAGIAN B: PENGALAMAN MENGAJAR DI SEKOLAH */}
           <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-start gap-2.5">
@@ -563,7 +475,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                 <button
                   type="button"
                   onClick={openAddSchool}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg whitespace-nowrap shrink-0 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Tambah
@@ -594,9 +506,11 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   ) : (
                     schoolList.map((item, idx) => (
                       <tr key={item.id} className="hover:bg-slate-50/60">
-                        <td className="py-3 px-4 font-mono-tabular text-slate-500">{idx + 1}.</td>
+                        <td className="py-3 px-4 font-mono-tabular tabular-nums text-slate-500">
+                          {idx + 1}.
+                        </td>
                         <td className="py-3 px-4 font-semibold text-[#0B1F3B]">{item.subject}</td>
-                        <td className="py-3 px-4 font-mono-tabular text-slate-700">
+                        <td className="py-3 px-4 font-mono-tabular tabular-nums text-slate-700">
                           {item.years} tahun
                         </td>
                         {canEdit && (
@@ -629,17 +543,17 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
             </div>
           </section>
 
-          {/* BAHAGIAN C: SELAIN DI IAB & SEKOLAH */}
+          {/* BAHAGIAN C: PENGALAMAN MENGAJAR SELAIN DI IAB & SEKOLAH */}
           <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-start gap-2.5">
                 <Building2 className="w-5 h-5 text-[#C69738] shrink-0 mt-0.5" />
                 <div>
                   <h2 className="text-sm font-bold text-[#0B1F3B] uppercase tracking-wide">
-                    BAHAGIAN C: PENGALAMAN MENGAJAR SELAIN DI IAB & SEKOLAH
+                    BAHAGIAN C: PENGALAMAN MENGAJAR SELAIN DI IAB &amp; SEKOLAH
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Rekod pengalaman mengajar atau mengendalikan latihan di institusi pengajian tinggi, agensi atau organisasi luar.
+                    Rekod pengalaman mengajar di institusi, universiti, kolej, pusat latihan atau organisasi luar.
                   </p>
                 </div>
               </div>
@@ -647,7 +561,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                 <button
                   type="button"
                   onClick={openAddExternal}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0B1F3B] hover:bg-[#14325C] rounded-lg whitespace-nowrap shrink-0 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Tambah
@@ -661,7 +575,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider">
                     <th className="py-3 px-4 w-12">Bil.</th>
                     <th className="py-3 px-4">Institusi / Organisasi</th>
-                    <th className="py-3 px-4">Bidang / Modul</th>
+                    <th className="py-3 px-4">Bidang/Modul</th>
                     <th className="py-3 px-4">Jenis Pengajaran</th>
                     <th className="py-3 px-4 w-40">Tahun Pengalaman</th>
                     {canEdit && <th className="py-3 px-4 text-right w-24">Tindakan</th>}
@@ -674,19 +588,21 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                         colSpan={canEdit ? 6 : 5}
                         className="py-8 px-4 text-center text-slate-500"
                       >
-                        Tiada pengalaman mengajar selain di IAB & sekolah direkodkan.
+                        Tiada pengalaman mengajar selain di IAB &amp; sekolah direkodkan.
                       </td>
                     </tr>
                   ) : (
                     externalList.map((item, idx) => (
                       <tr key={item.id} className="hover:bg-slate-50/60">
-                        <td className="py-3 px-4 font-mono-tabular text-slate-500">{idx + 1}.</td>
+                        <td className="py-3 px-4 font-mono-tabular tabular-nums text-slate-500">
+                          {idx + 1}.
+                        </td>
                         <td className="py-3 px-4 font-semibold text-[#0B1F3B]">
                           {item.institution}
                         </td>
                         <td className="py-3 px-4 text-slate-800">{item.moduleOrField}</td>
                         <td className="py-3 px-4 text-slate-700">{item.teachingType}</td>
-                        <td className="py-3 px-4 font-mono-tabular text-slate-700">
+                        <td className="py-3 px-4 font-mono-tabular tabular-nums text-slate-700">
                           {item.years} tahun
                         </td>
                         {canEdit && (
@@ -745,13 +661,14 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                 type="button"
                 onClick={() => setIabModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-700"
+                aria-label="Tutup"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleSaveIab} className="p-5 space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Bidang / Modul *</label>
+                <label className="block font-semibold text-slate-700 mb-1">Bidang/Modul *</label>
                 <input
                   type="text"
                   required
@@ -788,7 +705,8 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   step="0.5"
                   required
                   value={iabYears}
-                  onChange={(e) => setIabYears(Number(e.target.value))}
+                  onChange={(e) => setIabYears(e.target.value)}
+                  placeholder="Tahun pengalaman mengajar"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono-tabular"
                 />
               </div>
@@ -833,6 +751,7 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                 type="button"
                 onClick={() => setSchoolModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-700"
+                aria-label="Tutup"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -862,7 +781,8 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   step="0.5"
                   required
                   value={schoolYears}
-                  onChange={(e) => setSchoolYears(Number(e.target.value))}
+                  onChange={(e) => setSchoolYears(e.target.value)}
+                  placeholder="Tahun pengalaman mengajar"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono-tabular"
                 />
               </div>
@@ -900,13 +820,14 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#0B1F3B]">
                 {editingExtId
-                  ? 'Edit Pengalaman Mengajar Luar'
+                  ? 'Edit Pengalaman Mengajar Selain Di IAB & Sekolah'
                   : 'Tambah Pengalaman Mengajar Selain Di IAB & Sekolah'}
               </h3>
               <button
                 type="button"
                 onClick={() => setExtModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-700"
+                aria-label="Tutup"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -921,12 +842,12 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   required
                   value={extInstitution}
                   onChange={(e) => setExtInstitution(e.target.value)}
-                  placeholder="Contoh: Universiti Putra Malaysia / INTAN"
+                  placeholder="Nama institusi, universiti, kolej, pusat latihan atau organisasi"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
                 />
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Bidang / Modul *</label>
+                <label className="block font-semibold text-slate-700 mb-1">Bidang/Modul *</label>
                 <input
                   type="text"
                   required
@@ -963,7 +884,8 @@ export const TeachingExperiencePage: React.FC<TeachingExperiencePageProps> = ({
                   step="0.5"
                   required
                   value={extYears}
-                  onChange={(e) => setExtYears(Number(e.target.value))}
+                  onChange={(e) => setExtYears(e.target.value)}
+                  placeholder="Tahun pengalaman mengajar"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg font-mono-tabular"
                 />
               </div>

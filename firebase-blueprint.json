@@ -446,6 +446,27 @@
         "updatedBy": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "staffId", "uid", "apcAwards", "innovations", "researchOutputs", "otherAchievements", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
+    },
+    "TeachingExperienceRecord": {
+      "title": "TeachingExperienceRecord",
+      "description": "Rekod Pengalaman Mengajar pegawai di IAB, di sekolah serta selain di IAB & sekolah.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "staffId": { "type": "string", "maxLength": 64 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "centerId": { "type": "string", "maxLength": 64 },
+        "departmentId": { "type": "string", "maxLength": 64 },
+        "iabTeachingList": { "type": "array" },
+        "schoolTeachingList": { "type": "array" },
+        "externalTeachingList": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "updatedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "staffId", "uid", "iabTeachingList", "schoolTeachingList", "externalTeachingList", "status", "createdAt", "updatedAt", "createdBy", "updatedBy"]
     }
   },
   "firestore": {
@@ -496,6 +517,10 @@
     "/staff_achievements/{achId}": {
       "schema": { "$ref": "#/entities/StaffAchievementsRecord" },
       "description": "Rekod Pencapaian pegawai IAB (APC, Inovasi, Penerbitan & Penyelidikan, Lain-lain Pencapaian)."
+    },
+    "/teaching_experiences/{expId}": {
+      "schema": { "$ref": "#/entities/TeachingExperienceRecord" },
+      "description": "Rekod Pengalaman Mengajar pegawai di IAB, di sekolah serta selain di IAB & sekolah."
     },
     "/publications/{pubId}": {
       "schema": { "$ref": "#/entities/Publication" },
